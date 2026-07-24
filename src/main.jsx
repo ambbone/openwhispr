@@ -11,7 +11,17 @@ import { SettingsProvider } from "./hooks/useSettings";
 import i18n from "./i18n";
 import "./index.css";
 
-const root = ReactDOM.createRoot(document.getElementById("root"));
+const rootElement = document.getElementById("root");
+if (!rootElement) {
+  throw new Error("Root element not found");
+}
+
+const ROOT_KEY = "__openwhisprReactRoot";
+const globalRootHost = globalThis;
+const root =
+  globalRootHost[ROOT_KEY] ||
+  (globalRootHost[ROOT_KEY] = ReactDOM.createRoot(rootElement));
+
 root.render(
   <React.StrictMode>
     <ErrorBoundary>
@@ -27,7 +37,3 @@ root.render(
     </ErrorBoundary>
   </React.StrictMode>
 );
-
-if (import.meta.hot) {
-  import.meta.hot.accept();
-}
