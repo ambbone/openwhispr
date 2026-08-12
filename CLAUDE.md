@@ -114,10 +114,17 @@ OpenWhispr is an Electron-based desktop dictation application that uses whisper.
   - Linux: Event-driven via `pactl subscribe` (PulseAudio source-output events)
   - All platforms: Graceful fallback to polling if native approach fails
 - **processListCache.js**: Shared singleton process list cache (5s TTL, `ps-list` npm)
-- **googleCalendarManager.js**: Google Calendar sync with exponential backoff
+- **googleCalendarManager.js**: Google Calendar sync (REST, OAuth via `googleCalendarOAuth.js`)
   - 10s socket timeout on API requests
-  - Backoff: 2min → 4min → 8min → cap 30min on consecutive failures
-  - Reset to normal interval on success
+  - Incremental sync via `syncToken`; full re-sync on 410 prunes stale events (note-linked rows retained)
+- **microsoftCalendarManager.js**: Microsoft Calendar sync via Graph API (OAuth via `microsoftCalendarOAuth.js`)
+  - `calendarView/delta` incremental sync over a 14-day window; delta token discarded after 7 days (Graph delta links never roll their window forward)
+  - Full re-sync (410 or expired token) prunes stale events like Google
+- **appleCalendarManager.js**: Apple Calendar (EventKit) via the `macos-calendar-listener` Swift helper — macOS only, snapshot-push over stdout, no tokens ("connected" = `apple_calendars` has rows)
+- **calendarReminderScheduler.js**: Provider-agnostic meeting reminder scheduling over the shared `calendar_events` table (provider-scoped reset keys, so one provider's disconnect doesn't re-fire another's reminders)
+- **calendarSyncInterval.js**: Shared interval runner for the REST providers — exponential backoff (2min → 4min → 8min → cap 30min on consecutive failures, reset on success) and 30s focus-sync throttle
+- **oauthLoopbackFlow.js**: Shared PKCE auth-code flow over an ephemeral 127.0.0.1 server, used by both calendar OAuth helpers
+- Events from all providers land in the shared `calendar_events` table with a `provider` column; queries suppress the Apple copy of a meeting when a REST row occupies the same time slot + title (Calendar.app mirrors the same accounts)
 - **menuManager.js**: Application menu management
 - **tray.js**: System tray icon and menu
 - **whisper.js**: Local whisper.cpp integration and model management
@@ -559,7 +566,7 @@ Detects meetings via three independent sources, orchestrated by `MeetingDetectio
 **Architecture**:
 
 - `MeetingDetectionEngine` listens to events from `MeetingProcessDetector` and `AudioActivityDetector`
-- `GoogleCalendarManager` provides calendar context (imminent events, active meetings)
+- `CalendarReminderScheduler` provides calendar context (imminent events, active meetings) from the shared `calendar_events` table, fed by the Google/Microsoft/Apple calendar managers
 - All three sources feed into a unified notification pipeline
 
 **Process Detection** (known meeting apps — Zoom, Teams, Webex, FaceTime):
@@ -576,7 +583,7 @@ Detects meetings via three independent sources, orchestrated by `MeetingDetectio
 
 **Calendar Reminders** (scheduled meetings):
 
-- `GoogleCalendarManager` fires `meetingDetectionEngine.handleCalendarReminder(event)` 1 minute before the scheduled start (`MEETING_REMINDER_LEAD_MS`) — no native OS notifications; all meeting prompts use the in-app overlay so they survive Focus/DND and screen-share notification muting
+- `CalendarReminderScheduler` fires `meetingDetectionEngine.handleCalendarReminder(event)` 1 minute before the scheduled start (`MEETING_REMINDER_LEAD_MS`) — no native OS notifications; all meeting prompts use the in-app overlay so they survive Focus/DND and screen-share notification muting
 - Calendar-sourced prompts show a Join primary action when the event has a meeting link (`getMeetingJoinUrl` in `src/helpers/meetingJoinUrl.js`, shared with the renderer's Upcoming Meetings join button) — Join opens the link and starts the note
 
 **UX Rules**:
@@ -624,7 +631,21 @@ A dedicated global hotkey that starts a dictation whose transcript is sent strai
 - Onboarding: optional step right after the dictation hotkey (activation) step
 - Requires the dictation agent to be enabled (Settings → AI Models) for the agent route to apply
 
-**Tests**: `test/helpers/dictationRouting.test.js` (run with `node --test`)
+**Screen Context (opt-in)**:
+
+When "Share screen context" is enabled (Settings → AI Models → Voice Agent → Screen Context, store key `voiceAgentScreenContext`, default off), each voice-agent recording start captures the display the cursor is on and attaches it to the agent request as a base64 JPEG (long edge ≤ 1568 px).
+
+- Capture: `src/helpers/screenContextCapture.js` (main process; `screen.getCursorScreenPoint` + `desktopCapturer`). macOS requires the Screen Recording TCC permission (`useScreenRecordingPermission` hook + `PermissionCard` in `DictationAgentSettings`); Windows/Linux X11 need no permission; Linux Wayland is unsupported (capture silently skipped)
+- Encoding: `encodeWithinBudget()` walks a JPEG quality ladder (82 → 70 → 55), then falls back to a 1024 px resize, keeping the payload under `MAX_ENCODED_BYTES` (1.5 MB ≈ 2.05M base64 chars, inside the API's 2.8M cap). Each rung re-encodes the original bitmap, so quality drops never compound. A screen that still won't fit is dropped
+- Trigger: `useAudioRecording.js` calls `audioManager.beginScreenContextCapture()` at voice-agent start (fire-and-forget); `consumeScreenContext()` (3s guard) is awaited when the reasoning route is built. The dictation overlay gets `setContentProtection` while the setting is on so the pill never appears in captures
+- Routing: `resolveAgentImageTarget()` (`src/helpers/dictationRouting.js`) decides attach/drop. An optional vision override (`dictationAgentVision` inference scope, gated by `useDictationAgentVisionModel`, cloud/BYOK modes only) routes screenshot-carrying requests to a dedicated model; otherwise the base model gets the image only when its provider client is image-wired (`supportsImages` on the `InferenceProvider`) and the model has `supportsVision` in `modelRegistryData.json` (cloud mode defers to the server). Dropping the image never fails the dictation
+- Prompt: `appendScreenContextSuffix()` adds the `screenContextSuffix` prompts key only when an image is attached
+- Image-wired clients: `openai` (Responses `input_image` / Chat `image_url`, also `custom`/`openrouter`), `anthropic` (base64 content block via `process-anthropic-reasoning`), `gemini` (`inlineData`), `openwhispr` (forwards `screenContext` + `promptMode: "agent"` to `/api/reason`; the server routes to its `REASONING_VISION_*` model chain)
+- IPC: `capture-screen-context`, `check-screen-recording-access`, `request-screen-recording-access`, `open-screen-recording-settings`, `screen-context-set-enabled`
+- Privacy: screenshots live only in renderer memory for one request — never written to disk, stored in history, or logged (loggers emit `hasScreenContext` booleans only)
+- Failure UX: a rejected screenshot is retried once text-only from `processWithReasoningModel()` (rebuilding the prompt without the screen-context suffix) and reported via a non-destructive `SCREEN_CONTEXT_SKIPPED` toast, so an image problem never costs the user their command. Only if that retry also fails does the "Agent Unavailable" toast (`AGENT_REASONING_FAILED`) fire and the raw transcript get pasted
+
+**Tests**: `test/helpers/dictationRouting.test.js`, `test/helpers/screenContextCapture.test.js` (run with `node --test`)
 
 ## Development Guidelines
 
@@ -801,7 +822,7 @@ const { t } = useTranslation();
 - Process timeout protection (5 minutes)
 - Meeting detection uses event-driven OS APIs (near-zero CPU) with polling fallback
 - Process list cache shared between detectors to avoid duplicate `tasklist`/`pgrep` calls
-- Google Calendar sync uses exponential backoff to avoid hammering API on network failures
+- Calendar sync (Google/Microsoft) uses exponential backoff to avoid hammering APIs on network failures
 
 ## Security Considerations
 

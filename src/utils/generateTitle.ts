@@ -14,6 +14,7 @@ export async function generateNoteTitle(
     const raw = await reasoningService.processText(text.slice(0, 2000), modelId, null, {
       systemPrompt: TITLE_SYSTEM_PROMPT,
       temperature: getSettings().noteFormattingTemperature,
+      inferenceScope: "noteFormatting",
       disableThinking: getSettings().noteFormattingDisableThinking,
       ...config,
     });

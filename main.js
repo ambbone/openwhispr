@@ -1,19 +1,14 @@
-// KDE/GNOME Wayland: self-relaunch with --ozone-platform=x11 to force XWayland.
-// Chromium picks the display backend before JS runs, so appendSwitch is too late.
-if (
-  process.platform === "linux" &&
-  process.env.XDG_SESSION_TYPE === "wayland" &&
-  !process.argv.includes("--ozone-platform=x11")
-) {
-  const desktop = (process.env.XDG_CURRENT_DESKTOP || "").toLowerCase();
-  if (desktop.includes("kde") || /gnome|ubuntu|unity|cosmic/.test(desktop)) {
-    const { spawn } = require("child_process");
-    spawn(process.execPath, [...process.argv.slice(1), "--ozone-platform=x11"], {
-      stdio: "inherit",
-      detached: true,
-    }).unref();
-    process.exit(0);
-  }
+// Chromium picks the display backend before JS runs, so appendSwitch is too
+// late — the flag has to come from a relaunch.
+const { XWAYLAND_FLAG, shouldForceXWayland } = require("./src/helpers/xwayland");
+
+if (shouldForceXWayland(process.argv)) {
+  const { spawn } = require("child_process");
+  spawn(process.execPath, [...process.argv.slice(1), XWAYLAND_FLAG], {
+    stdio: "inherit",
+    detached: true,
+  }).unref();
+  process.exit(0);
 }
 
 const {
@@ -279,9 +274,13 @@ const DevServerManager = require("./src/helpers/devServerManager");
 const WindowsKeyManager = require("./src/helpers/windowsKeyManager");
 const LinuxKeyManager = require("./src/helpers/linuxKeyManager");
 const TextEditMonitor = require("./src/helpers/textEditMonitor");
+const SelectionManager = require("./src/helpers/selectionManager");
 const WhisperCudaManager = require("./src/helpers/whisperCudaManager");
 const WhisperVulkanManager = require("./src/helpers/whisperVulkanManager");
 const GoogleCalendarManager = require("./src/helpers/googleCalendarManager");
+const MicrosoftCalendarManager = require("./src/helpers/microsoftCalendarManager");
+const AppleCalendarManager = require("./src/helpers/appleCalendarManager");
+const CalendarReminderScheduler = require("./src/helpers/calendarReminderScheduler");
 const MeetingProcessDetector = require("./src/helpers/meetingProcessDetector");
 const AudioActivityDetector = require("./src/helpers/audioActivityDetector");
 const AudioTapManager = require("./src/helpers/audioTapManager");
@@ -289,6 +288,7 @@ const LinuxPortalAudioManager = require("./src/helpers/linuxPortalAudioManager")
 const WindowsLoopbackAudioManager = require("./src/helpers/windowsLoopbackAudioManager");
 const MeetingAecManager = require("./src/helpers/meetingAecManager");
 const MeetingDetectionEngine = require("./src/helpers/meetingDetectionEngine");
+const { applyOpenWhisprOriginHeader } = require("./src/helpers/sessionHeaders");
 const { i18nMain, changeLanguage } = require("./src/helpers/i18nMain");
 const { ensureYdotool } = require("./src/helpers/ensureYdotool");
 const sidecarRegistry = require("./src/helpers/sidecarRegistry");
@@ -310,9 +310,13 @@ let globeKeyManager = null;
 let windowsKeyManager = null;
 let linuxKeyManager = null;
 let textEditMonitor = null;
+let selectionManager = null;
 let whisperCudaManager = null;
 let whisperVulkanManager = null;
 let googleCalendarManager = null;
+let microsoftCalendarManager = null;
+let appleCalendarManager = null;
+let calendarReminderScheduler = null;
 let meetingDetectionEngine = null;
 let audioTapManager = null;
 let linuxPortalAudioManager = null;
@@ -401,21 +405,32 @@ function initializeCoreManagers() {
   }
   parakeetManager = new ParakeetManager();
   diarizationManager = new DiarizationManager();
-  googleCalendarManager = new GoogleCalendarManager(databaseManager, windowManager);
+  calendarReminderScheduler = new CalendarReminderScheduler(databaseManager);
+  googleCalendarManager = new GoogleCalendarManager(
+    databaseManager,
+    windowManager,
+    calendarReminderScheduler
+  );
+  microsoftCalendarManager = new MicrosoftCalendarManager(
+    databaseManager,
+    calendarReminderScheduler
+  );
+  appleCalendarManager = new AppleCalendarManager(databaseManager, calendarReminderScheduler);
   meetingDetectionEngine = new MeetingDetectionEngine(
-    googleCalendarManager,
+    calendarReminderScheduler,
     new MeetingProcessDetector(),
     new AudioActivityDetector(),
     windowManager,
     databaseManager
   );
   windowManager.meetingDetectionEngine = meetingDetectionEngine;
-  googleCalendarManager.meetingDetectionEngine = meetingDetectionEngine;
+  calendarReminderScheduler.meetingDetectionEngine = meetingDetectionEngine;
   updateManager = new UpdateManager();
   updateManager.setWindowManager(windowManager);
   windowsKeyManager = new WindowsKeyManager();
   linuxKeyManager = new LinuxKeyManager();
   textEditMonitor = new TextEditMonitor();
+  selectionManager = new SelectionManager({ clipboardManager, textEditMonitor });
   audioTapManager = new AudioTapManager();
   linuxPortalAudioManager = new LinuxPortalAudioManager();
   windowsLoopbackAudioManager = new WindowsLoopbackAudioManager();
@@ -425,6 +440,7 @@ function initializeCoreManagers() {
   cleanupOrphanedLinuxRestoreToken();
   meetingAecManager = new MeetingAecManager();
   windowManager.textEditMonitor = textEditMonitor;
+  windowManager.selectionManager = selectionManager;
   windowManager.windowsKeyManager = windowsKeyManager;
   windowManager.linuxKeyManager = linuxKeyManager;
 
@@ -441,9 +457,12 @@ function initializeCoreManagers() {
     windowsKeyManager,
     linuxKeyManager,
     textEditMonitor,
+    selectionManager,
     whisperCudaManager,
     whisperVulkanManager,
     googleCalendarManager,
+    microsoftCalendarManager,
+    appleCalendarManager,
     meetingDetectionEngine,
     audioTapManager,
     linuxPortalAudioManager,
@@ -508,6 +527,8 @@ function initializeDeferredManagers() {
   }
 
   googleCalendarManager.start();
+  microsoftCalendarManager.start();
+  appleCalendarManager.start();
   meetingDetectionEngine.start();
 }
 
@@ -542,6 +563,18 @@ app.on("open-url", (event, url) => {
 function isInvitationDeepLink(url) {
   return url.slice(`${OAUTH_PROTOCOL}://`.length).startsWith("invitations/");
 }
+
+// Deep links can arrive before windowManager exists (cold start) or before the
+// renderer has mounted its listener. The token is stashed here and the renderer
+// pulls it via `get-pending-invitation-token` on mount; the push below is a
+// best-effort fast path for an already-running app.
+let pendingInvitationDeepLinkToken = null;
+
+ipcMain.handle("get-pending-invitation-token", () => {
+  const token = pendingInvitationDeepLinkToken;
+  pendingInvitationDeepLinkToken = null;
+  return token;
+});
 
 function isNoteDeepLink(url) {
   return url.slice(`${OAUTH_PROTOCOL}://`.length).startsWith("notes/");
@@ -621,20 +654,16 @@ function handleInvitationDeepLink(deepLinkUrl) {
     const match = deepLinkUrl.match(/invitations\/([^/?#]+)/);
     const token = match?.[1];
     if (!token) return;
-    if (windowManager && isLiveWindow(windowManager.controlPanelWindow)) {
+    pendingInvitationDeepLinkToken = token;
+    if (!windowManager) return;
+    if (isLiveWindow(windowManager.controlPanelWindow)) {
       windowManager.controlPanelWindow.show();
       windowManager.controlPanelWindow.focus();
       dockManager.setControlPanelVisible(true);
+      // Best-effort fast path — the get-pending-invitation-token pull is the reliable path.
       windowManager.controlPanelWindow.webContents.send("workspace-invitation-token", token);
-    } else if (windowManager) {
+    } else {
       windowManager.createControlPanelWindow();
-      // Defer the send until renderer is ready; main.js relies on `did-finish-load`
-      const win = windowManager.controlPanelWindow;
-      if (win) {
-        win.webContents.once("did-finish-load", () => {
-          win.webContents.send("workspace-invitation-token", token);
-        });
-      }
     }
   } catch (error) {
     console.error("Invitation deep link parse failed:", error);
@@ -879,27 +908,7 @@ async function startApp() {
 
   await migrateCookieToBearerToken();
 
-  // Electron's file:// renderer sends Origin: null, which Better Auth's
-  // trustedOrigins check rejects. Spoof Origin to the request's own URL so
-  // calls to OpenWhispr's auth and API hosts are treated as same-origin.
-  session.defaultSession.webRequest.onBeforeSendHeaders(
-    {
-      urls: [
-        "https://auth.openwhispr.com/*",
-        "https://api.openwhispr.com/*",
-        "http://localhost:3000/*",
-        "http://127.0.0.1:3000/*",
-      ],
-    },
-    (details, callback) => {
-      try {
-        details.requestHeaders["Origin"] = new URL(details.url).origin;
-      } catch {
-        // malformed URL — leave Origin as-is
-      }
-      callback({ requestHeaders: details.requestHeaders });
-    }
-  );
+  applyOpenWhisprOriginHeader(session.defaultSession);
 
   windowManager.setActivationModeCache(environmentManager.getActivationMode());
   windowManager.setFloatingIconAutoHide(environmentManager.getFloatingIconAutoHide());
@@ -944,10 +953,21 @@ async function startApp() {
     await windowManager.createControlPanelWindow();
   }
 
+  // Windows/Linux cold start delivers protocol URLs via argv (macOS uses
+  // open-url); without this scan a deep link that launches the app is lost.
   const initialProtocolUrl = process.argv.find((arg) => arg.startsWith(`${OAUTH_PROTOCOL}://`));
   if (initialProtocolUrl && isNoteDeepLink(initialProtocolUrl)) {
     await handleNoteDeepLink(initialProtocolUrl);
   } else {
+    if (initialProtocolUrl && process.platform !== "darwin") {
+      if (initialProtocolUrl.includes("upgrade-success")) {
+        handleUpgradeDeepLink();
+      } else if (isInvitationDeepLink(initialProtocolUrl)) {
+        handleInvitationDeepLink(initialProtocolUrl);
+      } else {
+        void handleOAuthDeepLink(initialProtocolUrl);
+      }
+    }
     await flushPendingNoteDeepLink();
   }
 
@@ -1059,13 +1079,18 @@ async function startApp() {
 
   app.on("browser-window-focus", () => {
     if (googleCalendarManager) googleCalendarManager.syncOnFocus();
+    if (microsoftCalendarManager) microsoftCalendarManager.syncOnFocus();
+    if (appleCalendarManager) appleCalendarManager.syncOnFocus();
   });
 
   const { powerMonitor } = require("electron");
   powerMonitor.on("resume", () => {
+    if (calendarReminderScheduler) calendarReminderScheduler.onWakeFromSleep();
     if (googleCalendarManager) {
       googleCalendarManager.onWakeFromSleep();
     }
+    if (microsoftCalendarManager) microsoftCalendarManager.onWakeFromSleep();
+    if (appleCalendarManager) appleCalendarManager.onWakeFromSleep();
     // Sleep evicts the local GPU model from VRAM; reload it once the driver settles. See #766.
     if (wakeRewarmTimer) clearTimeout(wakeRewarmTimer);
     wakeRewarmTimer = setTimeout(() => {
@@ -1144,9 +1169,14 @@ async function startApp() {
         if (qdrantManager.isReady()) {
           const vectorIndex = require("./src/helpers/vectorIndex");
           vectorIndex.init(qdrantManager.getPort());
-          vectorIndex.ensureCollection().catch((err) => {
-            debugLogger.debug("Qdrant collection setup error (non-fatal)", { error: err.message });
-          });
+          vectorIndex
+            .ensureCollection()
+            .then(() => ipcHandlers?.drainPendingVectorPurges())
+            .catch((err) => {
+              debugLogger.debug("Qdrant collection setup error (non-fatal)", {
+                error: err.message,
+              });
+            });
         }
       })
       .catch((err) => {
@@ -1209,6 +1239,7 @@ async function startApp() {
               return;
             }
             windowManager.showDictationPanel();
+            windowManager.sendPrepareDictation();
             const pressTime = now;
             globeKeyDownTime = pressTime;
             globeKeyIsRecording = false;
@@ -1266,6 +1297,9 @@ async function startApp() {
             globeKeyIsRecording = false;
             debugLogger?.debug("[Globe] Stopping dictation (push release)");
             windowManager.sendStopDictation();
+          } else {
+            windowManager.sendCancelDictationPreparation();
+            windowManager.hideDictationPanel();
           }
         }
       }
@@ -1291,6 +1325,7 @@ async function startApp() {
       if (wasRecording) {
         windowManager.sendCancelDictation();
       } else {
+        windowManager.sendCancelDictationPreparation();
         windowManager.hideDictationPanel();
       }
     });
@@ -1329,6 +1364,7 @@ async function startApp() {
         const now = Date.now();
         if (now - rightModLastStopTime < POST_STOP_COOLDOWN_MS) return;
         windowManager.showDictationPanel();
+        windowManager.sendPrepareDictation();
         const pressTime = now;
         rightModActiveKey = modifier;
         rightModDownTime = pressTime;
@@ -1357,6 +1393,7 @@ async function startApp() {
             rightModIsRecording = false;
             windowManager.sendStopDictation();
           } else {
+            windowManager.sendCancelDictationPreparation();
             windowManager.hideDictationPanel();
           }
         }
@@ -1415,6 +1452,7 @@ async function startApp() {
         const now = Date.now();
         if (now - mouseButtonLastStopTime < POST_STOP_COOLDOWN_MS) return;
         windowManager.showDictationPanel();
+        windowManager.sendPrepareDictation();
         const pressTime = now;
         mouseButtonActiveButton = button;
         mouseButtonDownTime = pressTime;
@@ -1449,6 +1487,7 @@ async function startApp() {
           mouseButtonIsRecording = false;
           windowManager.sendStopDictation();
         } else {
+          windowManager.sendCancelDictationPreparation();
           windowManager.hideDictationPanel();
         }
       }
@@ -1833,6 +1872,9 @@ function performSyncTeardown() {
   if (linuxKeyManager) linuxKeyManager.stop();
   if (meetingDetectionEngine) meetingDetectionEngine.stop();
   if (googleCalendarManager) googleCalendarManager.stop();
+  if (microsoftCalendarManager) microsoftCalendarManager.stop();
+  if (appleCalendarManager) appleCalendarManager.stop();
+  if (calendarReminderScheduler) calendarReminderScheduler.stop();
   if (audioTapManager) audioTapManager.stop().catch(() => {});
   if (linuxPortalAudioManager) linuxPortalAudioManager.stop().catch(() => {});
   if (windowsLoopbackAudioManager) windowsLoopbackAudioManager.stop().catch(() => {});
