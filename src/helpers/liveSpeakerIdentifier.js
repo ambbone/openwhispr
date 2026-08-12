@@ -284,15 +284,6 @@ class LiveSpeakerIdentifier {
           continue;
         }
 
-        // Confirmed-distinct identities (different profiles, or different
-        // user-set names) must never merge on embedding similarity alone.
-        const profileI = this.transientProfileIds.get(speakers[i][0]);
-        const profileJ = this.transientProfileIds.get(speakers[j][0]);
-        if (profileI != null && profileJ != null && profileI !== profileJ) continue;
-        const nameI = this.transientDisplayNames.get(speakers[i][0]);
-        const nameJ = this.transientDisplayNames.get(speakers[j][0]);
-        if (nameI && nameJ && nameI !== nameJ) continue;
-
         const countI = this.transientCounts.get(speakers[i][0]) || 1;
         const countJ = this.transientCounts.get(speakers[j][0]) || 1;
         const hasNameI = !!this.transientDisplayNames.get(speakers[i][0]);
