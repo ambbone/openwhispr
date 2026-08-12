@@ -47,6 +47,9 @@ const SILENCE_THRESHOLD = 0.08;
 const SILENCE_WINDOWS_TO_END = 24;
 const MATCH_THRESHOLD = 0.65;
 const MATCH_MARGIN = 0.03;
+// Use a stricter threshold for background reclustering than live matching.
+// This favors false-split over false-merge in large, accented meetings.
+const RECLUSTER_MATCH_THRESHOLD = 0.74;
 const LIVE_WINDOW_PADDING_SECONDS = 0.75;
 const DEFAULT_VAD_STATE_SHAPE = [2, 1, 64];
 
@@ -265,7 +268,21 @@ class LiveSpeakerIdentifier {
         if (removed.has(speakers[j][0])) continue;
 
         const similarity = speakerEmbeddings.cosineSimilarity(speakers[i][1], speakers[j][1]);
-        if (similarity < MATCH_THRESHOLD) continue;
+        if (similarity < RECLUSTER_MATCH_THRESHOLD) continue;
+
+        const profileI = this.transientProfileIds.get(speakers[i][0]) ?? null;
+        const profileJ = this.transientProfileIds.get(speakers[j][0]) ?? null;
+        if (profileI && profileJ && profileI !== profileJ) {
+          continue;
+        }
+
+        const nameI = (this.transientDisplayNames.get(speakers[i][0]) || "").trim().toLowerCase();
+        const nameJ = (this.transientDisplayNames.get(speakers[j][0]) || "").trim().toLowerCase();
+        // If both speakers are already named differently, avoid auto-merging
+        // and leave reconciliation to explicit user mapping.
+        if (nameI && nameJ && nameI !== nameJ) {
+          continue;
+        }
 
         // Confirmed-distinct identities (different profiles, or different
         // user-set names) must never merge on embedding similarity alone.
@@ -332,6 +349,7 @@ class LiveSpeakerIdentifier {
           keep: keepId,
           remove: removeId,
           similarity: similarity.toFixed(3),
+          threshold: RECLUSTER_MATCH_THRESHOLD,
           keepCount,
           removeCount,
         });

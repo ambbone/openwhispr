@@ -2652,6 +2652,7 @@
       "isThisPerson": "{{name}}さんですか？",
       "selected": "{{n}}件選択中",
       "assignTo": "割り当て…",
+      "deleteSelected": "選択を削除",
       "deselectAll": "すべて選択解除",
       "confirmed": "確認済み",
       "nameAssigned": "名前を割り当てました",

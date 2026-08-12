@@ -2772,6 +2772,7 @@
       "isThisPerson": "¿Es {{name}}?",
       "selected": "{{n}} seleccionados",
       "assignTo": "Asignar a…",
+      "deleteSelected": "Eliminar selección",
       "deselectAll": "Deseleccionar todo",
       "confirmed": "Confirmado",
       "nameAssigned": "Nombre asignado",

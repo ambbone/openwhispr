@@ -2938,6 +2938,7 @@
       "isThisPerson": "Est-ce {{name}} ?",
       "selected": "{{n}} sélectionné(s)",
       "assignTo": "Assigner à…",
+      "deleteSelected": "Supprimer la sélection",
       "deselectAll": "Tout désélectionner",
       "confirmed": "Confirmé",
       "nameAssigned": "Nom attribué",

@@ -624,23 +624,53 @@ export default function NoteEditor({
   );
 
   const [selectedSegmentIds, setSelectedSegmentIds] = useState<Set<string>>(new Set());
+  const lastSelectedSegmentIdRef = useRef<string | null>(null);
   const [selectionNoteId, setSelectionNoteId] = useState(note.id);
   if (selectionNoteId !== note.id) {
     setSelectionNoteId(note.id);
     setSelectedSegmentIds(new Set());
+    lastSelectedSegmentIdRef.current = null;
   }
 
-  const handleToggleSelect = useCallback((segmentId: string) => {
-    setSelectedSegmentIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(segmentId)) next.delete(segmentId);
-      else next.add(segmentId);
-      return next;
-    });
-  }, []);
+  const handleToggleSelect = useCallback(
+    (segmentId: string, options?: { shiftKey?: boolean }) => {
+      const anchorId = lastSelectedSegmentIdRef.current;
+      const useRange = !!options?.shiftKey && !!anchorId;
+
+      setSelectedSegmentIds((prev) => {
+        if (useRange) {
+          const anchorIndex = displaySegments.findIndex((segment) => segment.id === anchorId);
+          const currentIndex = displaySegments.findIndex((segment) => segment.id === segmentId);
+          if (anchorIndex !== -1 && currentIndex !== -1) {
+            const [start, end] =
+              anchorIndex < currentIndex
+                ? [anchorIndex, currentIndex]
+                : [currentIndex, anchorIndex];
+            const next = new Set(prev);
+            for (let i = start; i <= end; i += 1) {
+              next.add(displaySegments[i].id);
+            }
+            return next;
+          }
+        }
+
+        const next = new Set(prev);
+        if (next.has(segmentId)) next.delete(segmentId);
+        else next.add(segmentId);
+        return next;
+      });
+
+      lastSelectedSegmentIdRef.current = segmentId;
+    },
+    [displaySegments]
+  );
 
   const handleClearSelection = useCallback(() => {
-    setSelectedSegmentIds(new Set());
+    setSelectedSegmentIds((prev) => {
+      if (prev.size === 0) return prev;
+      return new Set();
+    });
+    lastSelectedSegmentIdRef.current = null;
   }, []);
 
   useEffect(() => {
@@ -670,6 +700,13 @@ export default function NoteEditor({
     },
     [displaySegments, selectedSegmentIds, persistDisplaySegments, handleClearSelection]
   );
+
+  const handleBulkDelete = useCallback(async () => {
+    if (!selectedSegmentIds.size) return;
+    const nextSegments = displaySegments.filter((segment) => !selectedSegmentIds.has(segment.id));
+    await persistDisplaySegments(nextSegments);
+    handleClearSelection();
+  }, [displaySegments, selectedSegmentIds, persistDisplaySegments, handleClearSelection]);
 
   const handleTitleInput = useCallback(() => {
     if (titleRef.current) {
@@ -1204,6 +1241,7 @@ export default function NoteEditor({
               <SelectionBar
                 count={selectedSegmentIds.size}
                 onClear={handleClearSelection}
+                onDelete={handleBulkDelete}
                 speakerProfiles={knownSpeakers}
                 participants={parsedParticipants}
                 onAssignName={handleBulkAssignName}

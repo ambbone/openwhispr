@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Check, Loader2, Sparkles, Users, X } from "lucide-react";
+import { Check, Loader2, Sparkles, Trash2, Users, X } from "lucide-react";
 import { Popover, PopoverTrigger, PopoverContent } from "../ui/popover";
 import { Toggle } from "../ui/toggle";
 import { cn } from "../lib/utils";
@@ -483,21 +483,21 @@ function SelectCheckbox({
   className,
 }: {
   isSelected: boolean;
-  onToggle: () => void;
+  onToggle: (event: React.MouseEvent<HTMLButtonElement>) => void;
   className?: string;
 }) {
   return (
     <button
       onClick={(e) => {
         e.stopPropagation();
-        onToggle();
+        onToggle(e);
       }}
       aria-pressed={isSelected}
       className={cn(
         "w-4 h-4 rounded-full border flex items-center justify-center transition-all cursor-pointer",
         isSelected
           ? "border-primary bg-primary text-primary-foreground opacity-100"
-          : "border-border/60 bg-background/80 opacity-0 group-hover:opacity-100 hover:border-foreground/50",
+          : "border-border/60 bg-background/80 opacity-60 hover:opacity-100 hover:border-foreground/50",
         className
       )}
     >
@@ -509,6 +509,7 @@ function SelectCheckbox({
 export function SelectionBar({
   count,
   onClear,
+  onDelete,
   speakerProfiles,
   participants,
   onAssignName,
@@ -516,6 +517,7 @@ export function SelectionBar({
 }: {
   count: number;
   onClear: () => void;
+  onDelete: () => void;
   speakerProfiles?: SpeakerProfileLite[];
   participants?: Array<{ email: string; displayName: string | null }>;
   onAssignName: (name: string, email?: string | null, profileId?: number) => void;
@@ -549,6 +551,13 @@ export function SelectionBar({
           />
         </PopoverContent>
       </Popover>
+      <button
+        onClick={onDelete}
+        className="inline-flex items-center gap-1 px-2 py-1 rounded text-rose-500/90 hover:bg-rose-500/10 hover:text-rose-500 transition-colors cursor-pointer"
+      >
+        <Trash2 size={12} />
+        {t("notes.speaker.deleteSelected")}
+      </button>
       <button
         onClick={onClear}
         className="px-2 py-1 rounded text-muted-foreground hover:bg-foreground/5 hover:text-foreground transition-colors cursor-pointer"
@@ -585,7 +594,7 @@ interface MeetingTranscriptChatProps {
   onConfirmSuggestion?: (speakerId: string, suggestedName: string, profileId: number) => void;
   onDismissSuggestion?: (speakerId: string) => void;
   onAttachSpeakerEmail?: (profileId: number, email: string | null) => void;
-  onToggleSelect?: (segmentId: string) => void;
+  onToggleSelect?: (segmentId: string, options?: { shiftKey?: boolean }) => void;
 }
 
 export function MeetingTranscriptChat({
@@ -849,7 +858,9 @@ export function MeetingTranscriptChat({
                 {selectable && (
                   <SelectCheckbox
                     isSelected={isSelected}
-                    onToggle={() => onToggleSelect?.(segment.id)}
+                    onToggle={(event) =>
+                      onToggleSelect?.(segment.id, { shiftKey: event.shiftKey })
+                    }
                     className={cn("absolute top-1.5", selfSide ? "-left-6" : "-right-6")}
                   />
                 )}

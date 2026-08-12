@@ -2724,6 +2724,7 @@
       "isThisPerson": "这是{{name}}吗？",
       "selected": "已选 {{n}} 个",
       "assignTo": "分配给…",
+      "deleteSelected": "删除所选",
       "deselectAll": "取消全选",
       "confirmed": "已确认",
       "nameAssigned": "姓名已分配",
