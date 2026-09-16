@@ -12,6 +12,10 @@ import { getSettings, selectResolvedNoteFormatting } from "./settingsStore";
 import { appendDictionarySuffix } from "../config/prompts";
 import { generateNoteTitle } from "../utils/generateTitle";
 import { buildNoteFormattingOverrides } from "../helpers/noteFormattingOverrides";
+import {
+  shouldBatchNoteEnhancement,
+  splitNoteEnhancementText,
+} from "../helpers/noteEnhancementBatch";
 import { tagActionItemOwners, type MentionPerson } from "../utils/mentionMarkdown";
 import type { ActionItem } from "../types/electron";
 
@@ -40,6 +44,11 @@ const processingFlags = new Map<number, boolean>();
 const successTimers = new Map<number, NodeJS.Timeout>();
 
 const IDLE_STATE: NoteActionState = { status: "idle", actionName: null };
+
+const BATCH_CHUNK_INSTRUCTION =
+  "\n\nThis is one chronological chunk of a longer document. Extract only the important facts, discussion points, decisions, and action items from this chunk. Be concise so the results can be combined later.";
+const BATCH_FINAL_INSTRUCTION =
+  "\n\nThe following are chronological intermediate summaries from a longer document. Consolidate them into the requested final output. Deduplicate repeated points, preserve decisions and action items, and do not mention the chunking process.";
 
 function setNoteState(noteId: number, patch: Partial<NoteActionState>) {
   const { noteStates } = useActionProcessingStore.getState();
@@ -143,13 +152,38 @@ export function runBackgroundAction(
         typeof effectiveAction.temperature === "number"
           ? effectiveAction.temperature
           : noteFormatting.temperature;
-      const enhanced = await reasoningService.processText(noteContent, modelId, null, {
-        systemPrompt,
-        maxTokens: NOTE_OUTPUT_MAX_TOKENS,
+      const processConfig = {
         temperature: actionTemperature,
         disableThinking: settings.noteFormattingDisableThinking,
         ...providerOverrides,
-      });
+      };
+      let enhanced: string;
+      if (!shouldBatchNoteEnhancement(noteContent)) {
+        enhanced = await reasoningService.processText(noteContent, modelId, null, {
+          systemPrompt,
+          maxTokens: NOTE_OUTPUT_MAX_TOKENS,
+          ...processConfig,
+        });
+      } else {
+        const chunks = splitNoteEnhancementText(noteContent);
+        const summaries: string[] = [];
+        for (const chunk of chunks) {
+          if (cancelledFlags.get(noteId)) return;
+          summaries.push(
+            await reasoningService.processText(chunk, modelId, null, {
+              systemPrompt: systemPrompt + BATCH_CHUNK_INSTRUCTION,
+              maxTokens: NOTE_OUTPUT_MAX_TOKENS,
+              ...processConfig,
+            })
+          );
+        }
+        if (cancelledFlags.get(noteId)) return;
+        enhanced = await reasoningService.processText(summaries.join("\n\n"), modelId, null, {
+          systemPrompt: systemPrompt + BATCH_FINAL_INSTRUCTION,
+          maxTokens: NOTE_OUTPUT_MAX_TOKENS,
+          ...processConfig,
+        });
+      }
 
       // IPC-bridged providers relay whatever the model returned; a blank
       // result must not be saved as the enhanced note.
