@@ -748,6 +748,10 @@
       "label": "思考出力を無効にする",
       "help": "推論トークンをスキップして出力をクリーンに保ちます。クリーンアップに推奨。一部のサーバーはこのヒントを無視します。"
     },
+    "temperature": {
+      "label": "温度",
+      "help": "応答のばらつきを調整します。低い値は一貫性が高く、高い値はより創造的になります。"
+    },
     "selfHosted": {
       "endpointHelp": "ローカルネットワーク上の OpenAI 互換サーバーを指定します（例: Ollama、LM Studio、vLLM、llama-server）。"
     },
@@ -2875,6 +2879,10 @@
       "cancel": "キャンセル",
       "noActions": "カスタムアクションはまだありません",
       "promptLabel": "プロンプト",
+      "temperatureLabel": "温度",
+      "temperatureHelp": "このアクションのモデル温度をデフォルト値から上書きします。",
+      "temperatureOverride": "カスタム",
+      "temperatureValue": "値",
       "emptyEditorTitle": "アクションを選択",
       "emptyEditorDescription": "リストからアクションを選択するか、新しく作成してください",
       "runAction": "{{name}} を実行",

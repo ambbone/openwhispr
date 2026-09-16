@@ -727,6 +727,10 @@
       "label": "Desativar saída de raciocínio",
       "help": "Ignora tokens de raciocínio para uma saída mais limpa. Recomendado para limpeza. Alguns servidores ignoram esta dica."
     },
+    "temperature": {
+      "label": "Temperatura",
+      "help": "Controla a variabilidade das respostas. Valores baixos são mais consistentes; valores altos, mais criativos."
+    },
     "selfHosted": {
       "endpointHelp": "Aponte para um servidor compatível com OpenAI na sua rede local (ex.: Ollama, LM Studio, vLLM ou llama-server)."
     },
@@ -3094,6 +3098,10 @@
       "cancel": "Cancelar",
       "noActions": "Nenhuma ação personalizada ainda",
       "promptLabel": "Instrução",
+      "temperatureLabel": "Temperatura",
+      "temperatureHelp": "Substitui a temperatura padrão do modelo para esta ação.",
+      "temperatureOverride": "Personalizada",
+      "temperatureValue": "Valor",
       "emptyEditorTitle": "Selecionar ação",
       "emptyEditorDescription": "Escolha uma ação da lista ou crie uma nova",
       "runAction": "Executar {{name}}",

@@ -748,6 +748,10 @@
       "label": "停用思考輸出",
       "help": "略過推理權杖以獲得更乾淨的輸出。建議用於清理。某些伺服器會忽略此提示。"
     },
+    "temperature": {
+      "label": "溫度",
+      "help": "控制回應的變化度。較低值更一致，較高值更具創造性。"
+    },
     "selfHosted": {
       "endpointHelp": "指向本地網路中相容 OpenAI 的伺服器（例如 Ollama、LM Studio、vLLM 或 llama-server）。"
     },
@@ -3094,6 +3098,10 @@
       "cancel": "取消",
       "noActions": "尚無自訂動作",
       "promptLabel": "提示詞",
+      "temperatureLabel": "溫度",
+      "temperatureHelp": "覆寫此操作的模型預設溫度。",
+      "temperatureOverride": "自訂",
+      "temperatureValue": "值",
       "emptyEditorTitle": "選擇動作",
       "emptyEditorDescription": "從列表中選擇一個動作或建立新動作",
       "runAction": "執行 {{name}}",

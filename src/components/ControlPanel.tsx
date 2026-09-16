@@ -720,6 +720,7 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
               if (model || isCloud) {
                 const agentName = getAgentName();
                 const reasonedText = await ReasoningService.processText(rawText, model, agentName, {
+                  temperature: getSettings().cleanupTemperature,
                   disableThinking: getSettings().cleanupDisableThinking,
                   requireCompleteOutput: true,
                 });

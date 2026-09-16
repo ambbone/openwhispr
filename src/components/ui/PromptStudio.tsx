@@ -271,6 +271,7 @@ export default function PromptStudio({ className = "", kind = "cleanup" }: Promp
       try {
         const result = await ReasoningService.processText(testText, modelToUse, agentName, {
           inferenceScope: "dictationCleanup",
+          temperature: effectiveSettings.cleanupTemperature,
           disableThinking: effectiveSettings.cleanupDisableThinking,
         });
         setTestResult(result);

@@ -207,8 +207,11 @@ function resolveReasoningRoute(
   // Pin cleanup to 0 where supported; bridges otherwise default to 0.7 (local)
   // or 0.3 (Anthropic/enterprise). Zero does not guarantee determinism.
   // Direct Gemini owns its defaults (3: 1.0, older: 0); check mode to ignore stale providers.
+  // The slider default is 0 to match; raising it reintroduces sampling.
   const cleanupTemperature =
-    cleanup.mode === "providers" && cleanup.provider === "gemini" ? undefined : 0;
+    cleanup.mode === "providers" && cleanup.provider === "gemini"
+      ? undefined
+      : settings.cleanupTemperature;
   const cleanupReachable =
     !!settings.useCleanupModel && (!!cleanup.model?.trim() || isCloudCleanupMode());
   const agent = resolveDictationAgentInference(settings, {

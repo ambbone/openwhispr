@@ -383,6 +383,10 @@
       "label": "تعطيل مخرجات التفكير",
       "help": "يتخطى رموز الاستنتاج للحصول على مخرجات أنظف. موصى به للتنظيف. تتجاهل بعض الخوادم هذا التلميح."
     },
+    "temperature": {
+      "label": "Temperature",
+      "help": "Controls response variability. Lower values are more consistent, higher values are more creative."
+    },
     "selfHosted": {
       "endpointHelp": "أدخل عنوان خادم متوافق مع OpenAI على شبكتك المحلية (مثل Ollama أو LM Studio أو vLLM أو llama-server)."
     },
@@ -1797,6 +1801,10 @@
       "cancel": "إلغاء",
       "noActions": "لا توجد إجراءات مخصصة بعد",
       "promptLabel": "الموجه (Prompt)",
+      "temperatureLabel": "Temperature",
+      "temperatureHelp": "Override the default model temperature for this action.",
+      "temperatureOverride": "Custom",
+      "temperatureValue": "Value",
       "emptyEditorTitle": "اختر إجراءً",
       "emptyEditorDescription": "اختر إجراءً من القائمة أو أنشئ إجراءً جديدًا",
       "runAction": "تشغيل {{name}}",

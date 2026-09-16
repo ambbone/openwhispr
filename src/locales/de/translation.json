@@ -748,6 +748,10 @@
       "label": "Denkausgabe deaktivieren",
       "help": "Überspringt Reasoning-Token für eine sauberere Ausgabe. Empfohlen für Bereinigung. Einige Server ignorieren diesen Hinweis."
     },
+    "temperature": {
+      "label": "Temperatur",
+      "help": "Steuert die Variabilität von Antworten. Niedrige Werte sind konsistenter, höhere Werte kreativer."
+    },
     "selfHosted": {
       "endpointHelp": "Zeige auf einen OpenAI-kompatiblen Server in deinem lokalen Netzwerk (z. B. Ollama, LM Studio, vLLM oder llama-server)."
     },
@@ -3454,6 +3458,10 @@
       "cancel": "Abbrechen",
       "noActions": "Noch keine benutzerdefinierten Aktionen",
       "promptLabel": "Anweisung",
+      "temperatureLabel": "Temperatur",
+      "temperatureHelp": "Uberschreibt die Standard-Temperatur des Modells fur diese Aktion.",
+      "temperatureOverride": "Benutzerdefiniert",
+      "temperatureValue": "Wert",
       "emptyEditorTitle": "Aktion auswählen",
       "emptyEditorDescription": "Wählen Sie eine Aktion aus der Liste oder erstellen Sie eine neue",
       "runAction": "{{name}} ausführen",

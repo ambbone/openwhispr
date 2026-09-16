@@ -29,6 +29,7 @@ export function resolveDictationAgentInference(settings, { isCloudAgent = false 
         inferenceScope: /** @type {const} */ ("dictationAgent"),
         provider: managed.provider,
         disableThinking: settings.dictationAgentDisableThinking,
+        temperature: settings.dictationAgentTemperature,
       },
     };
   }
@@ -68,6 +69,7 @@ export function resolveDictationAgentInference(settings, { isCloudAgent = false 
       customApiKey:
         isCustom || isSelfHosted ? settings.dictationAgentCustomApiKey || undefined : undefined,
       disableThinking: settings.dictationAgentDisableThinking,
+      temperature: settings.dictationAgentTemperature,
     },
   };
 }
@@ -118,6 +120,7 @@ export function resolveDictationAgentVisionInference(settings, { isSignedIn = fa
       baseUrl: isCustom ? resolved.cloudBaseUrl || undefined : undefined,
       customApiKey: isCustom ? customApiKey || undefined : undefined,
       disableThinking: resolved.disableThinking,
+      temperature: resolved.temperature,
     },
   };
 }
@@ -197,6 +200,7 @@ export function resolveChatStreamingInference(
       cloudBaseUrl: vision.config.baseUrl,
       customApiKey: vision.config.customApiKey,
       disableThinking: vision.config.disableThinking,
+      temperature: vision.config.temperature,
     },
     attachScreenContext: true,
   };

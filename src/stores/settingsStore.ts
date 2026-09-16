@@ -209,6 +209,20 @@ function readNumber(key: string, fallback: number): number {
   return isNaN(parsed) ? fallback : parsed;
 }
 
+function clampTemperature(value: number): number {
+  if (!Number.isFinite(value)) return 0.3;
+  return Math.min(1, Math.max(0, Number(value.toFixed(2))));
+}
+
+function readTemperature(key: string, fallback = 0.3): number {
+  if (!isBrowser) return fallback;
+  const stored = localStorage.getItem(key);
+  if (stored === null) return fallback;
+  const parsed = Number(stored);
+  if (Number.isNaN(parsed)) return fallback;
+  return clampTemperature(parsed);
+}
+
 // Durations offered by the mic warm-hold select; unknown values snap to 0 (off)
 // so a hand-edited localStorage entry can never hold the mic open indefinitely.
 export const MIC_WARM_HOLD_CHOICES = [0, 10, 60, 900] as const;
@@ -322,6 +336,12 @@ const NUMERIC_SETTINGS = new Set([
   "micWarmHoldSeconds",
   "audioRetentionDays",
   "transcriptRetentionDays",
+  "cleanupTemperature",
+  "dictationAgentTemperature",
+  "dictationAgentVisionTemperature",
+  "noteFormattingTemperature",
+  "chatAgentTemperature",
+  "translationTemperature",
   "whisperVadThreshold",
   "whisperVadMinSpeechDurationMs",
   "whisperVadMinSilenceDurationMs",
@@ -935,6 +955,7 @@ export interface SettingsState
   noteFormattingCloudBaseUrl: string;
   noteFormattingRemoteUrl: string;
   noteFormattingCustomApiKey: string;
+  noteFormattingTemperature: number;
 
   translationMode: InferenceMode;
   translationProvider: string;
@@ -944,6 +965,7 @@ export interface SettingsState
   translationRemoteUrl: string;
   translationCustomApiKey: string;
   translationDisableThinking: boolean;
+  translationTemperature: number;
   useDictationTranslation: boolean;
   translationSourceLanguage: string;
   translationTargetLanguage: string;
@@ -956,6 +978,7 @@ export interface SettingsState
   dictationAgentCloudBaseUrl: string;
   dictationAgentRemoteUrl: string;
   dictationAgentCustomApiKey: string;
+  dictationAgentTemperature: number;
 
   // Voice-agent screen context: opt-in screenshot capture, plus an optional
   // dedicated model used only when a screenshot is attached.
@@ -967,12 +990,15 @@ export interface SettingsState
   dictationAgentVisionCloudMode: string;
   dictationAgentVisionCloudBaseUrl: string;
   dictationAgentVisionCustomApiKey: string;
+  dictationAgentVisionTemperature: number;
 
   cleanupDisableThinking: boolean;
+  cleanupTemperature: number;
   dictationAgentDisableThinking: boolean;
   dictationAgentVisionDisableThinking: boolean;
   noteFormattingDisableThinking: boolean;
   chatAgentDisableThinking: boolean;
+  chatAgentTemperature: number;
 
   customPrompts: Record<PromptKind, string>;
   setCustomPrompt: (kind: PromptKind, value: string) => void;
@@ -1744,6 +1770,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   noteFormattingCloudBaseUrl: readString("noteFormattingCloudBaseUrl", ""),
   noteFormattingRemoteUrl: readString("noteFormattingRemoteUrl", ""),
   noteFormattingCustomApiKey: readString("noteFormattingCustomApiKey", ""),
+  noteFormattingTemperature: readTemperature("noteFormattingTemperature", 0.3),
 
   translationMode: (() => {
     const v = readString("translationMode", "openwhispr");
@@ -1764,6 +1791,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   translationRemoteUrl: readString("translationRemoteUrl", ""),
   translationCustomApiKey: readString("translationCustomApiKey", ""),
   translationDisableThinking: readBoolean("translationDisableThinking", true),
+  translationTemperature: readTemperature("translationTemperature", 0.3),
   useDictationTranslation: readBoolean("useDictationTranslation", false),
   translationSourceLanguage: readString("translationSourceLanguage", "auto"),
   translationTargetLanguage: readString("translationTargetLanguage", ""),
@@ -1873,6 +1901,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   chatAgentRemoteUrl: readString("chatAgentRemoteUrl", ""),
   chatAgentCloudBaseUrl: readString("chatAgentCloudBaseUrl", ""),
   chatAgentCustomApiKey: readString("chatAgentCustomApiKey", ""),
+  chatAgentTemperature: readTemperature("chatAgentTemperature", 0.3),
 
   dictationAgentMode: (() => {
     const v = readString("dictationAgentMode", "openwhispr");
@@ -1892,6 +1921,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   dictationAgentCloudBaseUrl: readString("dictationAgentCloudBaseUrl", ""),
   dictationAgentRemoteUrl: readString("dictationAgentRemoteUrl", ""),
   dictationAgentCustomApiKey: readString("dictationAgentCustomApiKey", ""),
+  dictationAgentTemperature: readTemperature("dictationAgentTemperature", 0.3),
 
   voiceAgentScreenContext: readBoolean("voiceAgentScreenContext", false),
   useDictationAgentVisionModel: readBoolean("useDictationAgentVisionModel", false),
@@ -1902,8 +1932,10 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   dictationAgentVisionCloudMode: readString("dictationAgentVisionCloudMode", "openwhispr"),
   dictationAgentVisionCloudBaseUrl: readString("dictationAgentVisionCloudBaseUrl", ""),
   dictationAgentVisionCustomApiKey: readString("dictationAgentVisionCustomApiKey", ""),
+  dictationAgentVisionTemperature: readTemperature("dictationAgentVisionTemperature", 0.3),
 
   cleanupDisableThinking: readBoolean("cleanupDisableThinking", true),
+  cleanupTemperature: readTemperature("cleanupTemperature", 0),
   dictationAgentDisableThinking: readBoolean("dictationAgentDisableThinking", true),
   dictationAgentVisionDisableThinking: readBoolean("dictationAgentVisionDisableThinking", true),
   noteFormattingDisableThinking: readBoolean("noteFormattingDisableThinking", true),
@@ -2793,6 +2825,7 @@ export interface ResolvedNoteFormatting {
   cloudBaseUrl: string;
   remoteUrl: string;
   customApiKey: string;
+  temperature: number;
 }
 
 export const selectResolvedNoteFormatting = (state: SettingsState): ResolvedNoteFormatting => {
@@ -2816,6 +2849,7 @@ export const selectResolvedNoteFormatting = (state: SettingsState): ResolvedNote
     cloudBaseUrl: cfg.cloudBaseUrl || "",
     remoteUrl: cfg.remoteUrl || "",
     customApiKey: cfg.customApiKey || (borrowsEndpoint ? cleanup.customApiKey || "" : ""),
+    temperature: cfg.temperature,
   };
 };
 
@@ -2829,6 +2863,7 @@ export interface ResolvedLLMConfig {
   remoteUrl?: string;
   customApiKey?: string;
   disableThinking: boolean;
+  temperature: number;
 }
 
 export const selectResolvedLLMConfig = (
@@ -2848,6 +2883,10 @@ export const selectResolvedLLMConfig = (
 
   const disableThinkingKey = def.storeKeys.disableThinking;
   const disableThinking = disableThinkingKey ? (state[disableThinkingKey] as boolean) : true;
+  const temperatureKey = def.storeKeys.temperature;
+  const temperature = temperatureKey
+    ? clampTemperature((state[temperatureKey] as number) ?? 0.3)
+    : 0.3;
 
   const localConfig: ResolvedLLMConfig = {
     scope,
@@ -2862,6 +2901,7 @@ export const selectResolvedLLMConfig = (
     // belongs on the request path — see selectResolvedNoteFormatting.
     customApiKey: read("customApiKey"),
     disableThinking,
+    temperature,
   };
   const managed = getManagedScopeResolution(scope, state.enterpriseSetupMode);
   if (managed.kind === "error") {
@@ -2907,7 +2947,11 @@ export function setResolvedLLMConfig(
     if (isBrowser) {
       localStorage.setItem(
         storeKey as string,
-        typeof value === "boolean" ? String(value) : (value as string)
+        typeof value === "boolean"
+          ? String(value)
+          : typeof value === "number"
+            ? String(value)
+            : (value as string)
       );
     }
     (updates as Record<string, unknown>)[storeKey as string] = value;

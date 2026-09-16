@@ -465,6 +465,7 @@ export function useChatStreaming({
               baseUrl: isCustomAgent ? llmConfig.cloudBaseUrl || undefined : undefined,
               customApiKey:
                 isCustomAgent || isLanAgent ? llmConfig.customApiKey || undefined : undefined,
+              temperature: llmConfig.temperature,
               disableThinking: llmConfig.disableThinking,
             },
             aiTools

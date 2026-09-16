@@ -116,8 +116,16 @@ export function runBackgroundAction(
 
   (async () => {
     try {
+      let effectiveAction = action;
+      try {
+        const latestAction = await window.electronAPI.getAction(action.id);
+        if (latestAction) effectiveAction = latestAction;
+      } catch {
+        // If action refresh fails, continue with the selected in-memory action.
+      }
+
       const standalone =
-        !!action.translation_key && STANDALONE_PROMPT_KEYS.has(action.translation_key);
+        !!effectiveAction.translation_key && STANDALONE_PROMPT_KEYS.has(effectiveAction.translation_key);
       const basePrompt = standalone
         ? options.isMeetingNote
           ? MEETING_INPUT_PREAMBLE
@@ -127,14 +135,18 @@ export function runBackgroundAction(
           : BASE_SYSTEM_PROMPT;
       const providerOverrides = buildNoteFormattingOverrides(noteFormatting, options.isCloudMode);
       const systemPrompt = appendDictionarySuffix(
-        basePrompt + action.prompt,
+        basePrompt + effectiveAction.prompt,
         options.isMeetingNote ? settings.customDictionary : undefined,
         settings.uiLanguage
       );
+      const actionTemperature =
+        typeof effectiveAction.temperature === "number"
+          ? effectiveAction.temperature
+          : noteFormatting.temperature;
       const enhanced = await reasoningService.processText(noteContent, modelId, null, {
         systemPrompt,
         maxTokens: NOTE_OUTPUT_MAX_TOKENS,
-        temperature: 0.3,
+        temperature: actionTemperature,
         disableThinking: settings.noteFormattingDisableThinking,
         ...providerOverrides,
       });
@@ -159,7 +171,7 @@ export function runBackgroundAction(
         enhanced_content: options.knownPeople?.length
           ? tagActionItemOwners(enhanced, options.knownPeople)
           : enhanced,
-        enhancement_prompt: action.prompt,
+        enhancement_prompt: effectiveAction.prompt,
         enhanced_at_content_hash: contentHash,
       };
       if (title) updates.title = title;
