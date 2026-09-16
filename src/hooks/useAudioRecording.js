@@ -35,6 +35,7 @@ const SELECTION_EDIT_DETAIL_KEY_BY_CODE = {
   paste_failed: "pasteFailed",
 };
 const COMPANION_AUDIO_LEVEL_INTERVAL_MS = 80;
+const TOGGLE_DEBOUNCE_MS = 250;
 
 export const useAudioRecording = (toast, options = {}) => {
   const { t } = useTranslation();
@@ -58,6 +59,7 @@ export const useAudioRecording = (toast, options = {}) => {
   const demoKindRef = useRef("dictation");
   const onDemoEventRef = useRef(options.onDemoEvent);
   const reportedLifecycleRef = useRef(null);
+  const lastToggleAtRef = useRef(0);
   const lastStartOptionsRef = useRef({
     voiceAgentRequested: false,
     translationRequested: false,
@@ -146,13 +148,11 @@ export const useAudioRecording = (toast, options = {}) => {
         // Preserve the requested identity while Windows is still opening the
         // microphone; AudioManager confirms the same value once recording.
         setIsAssistantVoice(voiceAgentRequested);
+        // Begin opening the microphone immediately. The visual preparation
+        // frames can run in parallel instead of delaying capture startup.
+        void audioManagerRef.current.prepareMicCapture?.();
         await waitForVisualFrames();
         if (preparationGeneration !== preparationGenerationRef.current) return false;
-
-        // Start acquisition only after the compact thinking frame has reached
-        // the compositor. startRecording() joins this prepared capture, so the
-        // device still opens exactly once.
-        void audioManagerRef.current.prepareMicCapture?.();
 
         // The floating dictation panel is non-focusable, so the foreground app is
         // still the user's actual editing target here. Refresh it for recordings
@@ -798,9 +798,11 @@ export const useAudioRecording = (toast, options = {}) => {
       // from the payload — the audioManager flags still describe the PREVIOUS
       // recording at this point.
       reportLifecycle("preparing", options?.inputKind);
+      // Start microphone preparation immediately; compositor frames should not
+      // add latency before the user can speak.
+      void audioManagerRef.current.prepareMicCapture?.();
       await waitForVisualFrames();
       if (generation !== preparationGenerationRef.current || startLockRef.current) return;
-      void audioManagerRef.current.prepareMicCapture?.();
     });
 
     const disposeCancelPreparation = window.electronAPI.onCancelDictationPreparation?.(() => {
@@ -908,6 +910,9 @@ export const useAudioRecording = (toast, options = {}) => {
     voiceAgentRequested = false,
     translationRequested = false,
   } = {}) => {
+    const now = performance.now();
+    if (now - lastToggleAtRef.current < TOGGLE_DEBOUNCE_MS) return;
+    lastToggleAtRef.current = now;
     if (!isRecording && !isProcessing) {
       await performStartRecording({ voiceAgentRequested, translationRequested });
     } else if (isRecording) {

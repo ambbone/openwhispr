@@ -189,6 +189,15 @@ export function isAgentAllowed(state: PolicyDecisionSnapshot): boolean {
   return managedPolicyDecision(state, (policy) => policy.features.agentEnabled);
 }
 
+/** Whether chat may use the selected backend, including offline local models. */
+export function isChatSelectionAllowed(
+  state: PolicyDecisionSnapshot,
+  selection: LlmSelection
+): boolean {
+  if (selection.mode === "local") return isLlmSelectionAllowed(state, selection);
+  return isAgentAllowed(state) && isLlmSelectionAllowed(state, selection);
+}
+
 /** Whether the agent's web_search tool is allowed. */
 export function isWebSearchAllowed(state: PolicyDecisionSnapshot): boolean {
   return managedPolicyDecision(state, (policy) => policy.features.webSearchEnabled);
@@ -325,6 +334,9 @@ export function isLlmSelectionAllowed(
   state: PolicyDecisionSnapshot,
   selection: LlmSelection
 ): boolean {
+  // Local models do not contact the OpenWhispr service and stay available
+  // while policy is unsettled — but an explicit managed policy still wins.
+  if (selection.mode === "local" && !(state.status === "managed" && state.policy)) return true;
   if (!isModeAllowedByPolicy(state, "llm", selection.mode)) return false;
   if (selection.mode === "providers") {
     return isProviderAllowedByPolicy(state, "llm", selection.provider);
@@ -344,6 +356,9 @@ export function isTranscriptionSelectionAllowed(
   state: PolicyDecisionSnapshot,
   selection: TranscriptionSelection
 ): boolean {
+  // Local inference does not use the OpenWhispr service, so unsettled policy
+  // must not block offline transcription — an explicit managed policy still wins.
+  if (selection.mode === "local" && !(state.status === "managed" && state.policy)) return true;
   if (!isModeAllowedByPolicy(state, "transcription", selection.mode)) return false;
   if (selection.mode === "providers") {
     return isProviderAllowedByPolicy(state, "transcription", selection.provider);

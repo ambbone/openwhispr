@@ -8,7 +8,7 @@ import { resolveChatStreamingInference } from "../../helpers/dictationAgentInfer
 import logger from "../../utils/logger";
 import {
   isAgentAllowed,
-  isLlmSelectionAllowed,
+  isChatSelectionAllowed,
   isWebSearchAllowed,
 } from "../../stores/policyRules";
 import { usePolicyStore } from "../../stores/policyStore";
@@ -252,8 +252,7 @@ export function useChatStreaming({
             ? "local"
             : llmConfig.provider;
       if (
-        !isAgentAllowed(policyState) ||
-        !isLlmSelectionAllowed(policyState, { mode: llmMode, provider: policyProvider })
+        !isChatSelectionAllowed(policyState, { mode: llmMode, provider: policyProvider })
       ) {
         // The user message is already appended; answer it instead of dead-ending silently.
         const restriction = !isAgentAllowed(policyState)

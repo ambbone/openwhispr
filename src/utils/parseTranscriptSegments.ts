@@ -1,8 +1,26 @@
 import type { TranscriptSegment } from "../stores/meetingRecordingStore";
 import { normalizeTranscriptSegments } from "./transcriptSpeakerState";
 import logger from "./logger";
+
+function parseLegacyTranscriptSegments(raw: string): TranscriptSegment[] {
+  const lines = raw
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (lines.length === 0) return [];
+
+  return normalizeTranscriptSegments(
+    lines.map((line, i) => ({
+      id: `legacy-${i}`,
+      text: line,
+      source: "system" as const,
+    }))
+  );
+}
+
 export function parseTranscriptSegments(raw: string): TranscriptSegment[] {
-  if (!raw.startsWith("[")) return [];
+  if (!raw.startsWith("[")) return parseLegacyTranscriptSegments(raw);
   try {
     const parsed = JSON.parse(raw) as Array<{
       text: string;
@@ -35,6 +53,6 @@ export function parseTranscriptSegments(raw: string): TranscriptSegment[] {
     );
   } catch (e) {
     logger.warn("Failed to parse transcript segments", e);
-    return [];
+    return parseLegacyTranscriptSegments(raw);
   }
 }

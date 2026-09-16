@@ -102,15 +102,22 @@ test("acquireClone drops the master on constraints mismatch", async () => {
   assert.deepEqual(events, [true, false]);
 });
 
-test("acquireClone drops a dead or muted master", async () => {
-  for (const state of [{ live: false }, { muted: true }]) {
-    const { hold } = await makeHold();
-    const track = fakeTrack(state);
-    hold.adoptAndClone(fakeStream(track), "key");
+test("acquireClone drops a dead master", async () => {
+  const { hold } = await makeHold();
+  const track = fakeTrack({ live: false });
+  hold.adoptAndClone(fakeStream(track), "key");
 
-    assert.equal(hold.acquireClone("key"), null);
-    assert.equal(hold.active, false);
-  }
+  assert.equal(hold.acquireClone("key"), null);
+  assert.equal(hold.active, false);
+});
+
+test("acquireClone keeps a live master even when idle Windows marks it muted", async () => {
+  const { hold } = await makeHold();
+  const track = fakeTrack({ muted: true });
+  hold.adoptAndClone(fakeStream(track), "key");
+
+  assert.notEqual(hold.acquireClone("key"), null);
+  assert.equal(hold.active, true);
 });
 
 test("the release timer stops the master and can be re-armed by touch", async () => {

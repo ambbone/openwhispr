@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, UserPlus } from "../../icons";
+import { Plus, Upload, UserPlus } from "../../icons";
 import { useTranslation } from "react-i18next";
 import InviteTeammateDialog from "../../InviteTeammateDialog";
 import { useWorkspaceStore } from "../../../stores/workspaceStore";
@@ -27,6 +27,7 @@ interface ContainerOverviewProps {
   onOpenNote: (noteId: number) => void;
   onNewNote: () => void;
   onAddExisting?: () => void;
+  onImportNotes?: (files: FileList) => void;
 }
 
 export function ContainerOverview({
@@ -35,6 +36,7 @@ export function ContainerOverview({
   onOpenNote,
   onNewNote,
   onAddExisting,
+  onImportNotes,
 }: ContainerOverviewProps) {
   const { t } = useTranslation();
   const workspaces = useWorkspaceStore((s) => s.workspaces);
@@ -116,6 +118,22 @@ export function ContainerOverview({
             {metaParts.join(" · ")}
           </p>
           <div className="mt-1 flex items-center gap-2">
+            {onImportNotes && (
+              <label className="inline-flex items-center gap-1.5 px-3 h-7 rounded-md border border-border/70 dark:border-white/10 text-xs font-medium text-foreground/60 hover:text-foreground/85 hover:border-border/70 hover:bg-foreground/3 dark:hover:bg-white/3 transition-colors duration-150 cursor-pointer">
+                <Upload size={12} />
+                {t("notes.overview.importTranscriptAsNote")}
+                <input
+                  type="file"
+                  accept=".json,application/json"
+                  multiple
+                  className="hidden"
+                  onChange={(event) => {
+                    if (event.target.files?.length) onImportNotes(event.target.files);
+                    event.currentTarget.value = "";
+                  }}
+                />
+              </label>
+            )}
             {/* The empty state keeps its own focal create CTA in the list. */}
             {notes.length > 0 && (
               <button

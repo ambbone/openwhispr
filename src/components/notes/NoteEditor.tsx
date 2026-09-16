@@ -16,6 +16,7 @@ import {
   Plus,
   Check,
   Users,
+  Calendar,
 } from "../icons";
 import ShareNoteDialog, { type NoteExportOption } from "./ShareNoteDialog";
 import {
@@ -66,9 +67,10 @@ import NoteBottomBar from "./NoteBottomBar";
 import NoteRecordControl, { RecordingWave } from "./NoteRecordControl";
 import EmptyStateCard from "../ui/EmptyStateCard";
 import { Button } from "../ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import EmbeddedChat, { type EmbeddedChatMode } from "./EmbeddedChat";
 import { useEmbeddedChat } from "../../hooks/useEmbeddedChat";
-import { formatNoteDate, formatRelativeTime, formatShortDate } from "../../utils/dateFormatting";
+import { formatNoteDate, formatRelativeTime, formatShortDate, normalizeDbDate } from "../../utils/dateFormatting";
 import { collectKnownPeople } from "../../utils/llmTranscript";
 import { parseTranscriptSegments } from "../../utils/parseTranscriptSegments";
 import {
@@ -109,6 +111,22 @@ export interface Enhancement {
 type MeetingViewMode = "raw" | "transcript" | "enhanced";
 
 type SpeakerProfileOption = { id?: number; display_name: string; email: string | null };
+
+function transcriptSegmentFingerprint(segment: TranscriptSegment): string {
+  return JSON.stringify([
+    segment.text,
+    segment.source,
+    segment.timestamp ?? null,
+    segment.speaker ?? null,
+    segment.speakerName ?? null,
+    segment.speakerIsPlaceholder ?? null,
+    segment.suggestedName ?? null,
+    segment.suggestedProfileId ?? null,
+    segment.speakerStatus ?? null,
+    segment.speakerLocked ?? null,
+    segment.speakerLockSource ?? null,
+  ]);
+}
 
 function buildKnownSpeakers(
   profiles: SpeakerProfileOption[],
@@ -571,6 +589,16 @@ export default function NoteEditor({
     [note.id]
   );
 
+  const handleEditSegment = useCallback(
+    async (segmentId: string, text: string) => {
+      const nextSegments = displaySegments.map((segment) =>
+        segment.id === segmentId ? { ...segment, text } : segment
+      );
+      await persistDisplaySegments(nextSegments);
+    },
+    [displaySegments, persistDisplaySegments]
+  );
+
   const handleMapSpeaker = useCallback(
     async (
       speakerId: string,
@@ -652,23 +680,58 @@ export default function NoteEditor({
   );
 
   const [selectedSegmentIds, setSelectedSegmentIds] = useState<Set<string>>(new Set());
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [transferTargetId, setTransferTargetId] = useState("");
+  const [transferTitle, setTransferTitle] = useState("");
+  const [transferCandidates, setTransferCandidates] = useState<NoteItem[]>([]);
+  const [moveConfirmOpen, setMoveConfirmOpen] = useState(false);
+  const lastSelectedSegmentIdRef = useRef<string | null>(null);
   const [selectionNoteId, setSelectionNoteId] = useState(note.id);
   if (selectionNoteId !== note.id) {
     setSelectionNoteId(note.id);
     setSelectedSegmentIds(new Set());
+    lastSelectedSegmentIdRef.current = null;
   }
 
-  const handleToggleSelect = useCallback((segmentId: string) => {
-    setSelectedSegmentIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(segmentId)) next.delete(segmentId);
-      else next.add(segmentId);
-      return next;
-    });
-  }, []);
+  const handleToggleSelect = useCallback(
+    (segmentId: string, options?: { shiftKey?: boolean }) => {
+      const anchorId = lastSelectedSegmentIdRef.current;
+      const useRange = !!options?.shiftKey && !!anchorId;
+
+      setSelectedSegmentIds((prev) => {
+        if (useRange) {
+          const anchorIndex = displaySegments.findIndex((segment) => segment.id === anchorId);
+          const currentIndex = displaySegments.findIndex((segment) => segment.id === segmentId);
+          if (anchorIndex !== -1 && currentIndex !== -1) {
+            const [start, end] =
+              anchorIndex < currentIndex
+                ? [anchorIndex, currentIndex]
+                : [currentIndex, anchorIndex];
+            const next = new Set(prev);
+            for (let i = start; i <= end; i += 1) {
+              next.add(displaySegments[i].id);
+            }
+            return next;
+          }
+        }
+
+        const next = new Set(prev);
+        if (next.has(segmentId)) next.delete(segmentId);
+        else next.add(segmentId);
+        return next;
+      });
+
+      lastSelectedSegmentIdRef.current = segmentId;
+    },
+    [displaySegments]
+  );
 
   const handleClearSelection = useCallback(() => {
-    setSelectedSegmentIds(new Set());
+    setSelectedSegmentIds((prev) => {
+      if (prev.size === 0) return prev;
+      return new Set();
+    });
+    lastSelectedSegmentIdRef.current = null;
   }, []);
 
   useEffect(() => {
@@ -698,6 +761,74 @@ export default function NoteEditor({
     },
     [displaySegments, selectedSegmentIds, persistDisplaySegments, handleClearSelection]
   );
+
+  const handleBulkDelete = useCallback(async () => {
+    if (!selectedSegmentIds.size) return;
+    const nextSegments = displaySegments.filter((segment) => !selectedSegmentIds.has(segment.id));
+    await persistDisplaySegments(nextSegments);
+    handleClearSelection();
+  }, [displaySegments, selectedSegmentIds, persistDisplaySegments, handleClearSelection]);
+
+  const handleTransferSelection = useCallback(async () => {
+    if (selectedSegmentIds.size === 0) return;
+    const notes = await window.electronAPI.getNotes(null, 200);
+    setTransferCandidates(notes.filter((candidate) => candidate.id !== note.id));
+    setTransferTargetId("");
+    setTransferTitle("");
+    setTransferOpen(true);
+  }, [note.id, selectedSegmentIds.size]);
+
+  const executeTransfer = useCallback(async (removeFromSource: boolean) => {
+    const selected = displaySegments
+      .filter((segment) => selectedSegmentIds.has(segment.id))
+      .sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0));
+    if (selected.length === 0) return;
+    let target = transferCandidates.find((candidate) => candidate.id === Number(transferTargetId)) ?? null;
+    if (!target) {
+      if (!transferTitle.trim()) return;
+      const created = await window.electronAPI.saveNote(
+        transferTitle.trim(), "", "meeting", null, null, note.folder_id, note.space_id
+      );
+      if (!created.success || !created.note) throw new Error("Failed to create target note");
+      target = created.note;
+      const sourceDate = note.created_at || note.updated_at;
+      if (sourceDate) {
+        await window.electronAPI.updateNote(target.id, {
+          created_at: sourceDate,
+          updated_at: sourceDate,
+        });
+      }
+    }
+    const targetSegments = parseTranscriptSegments(target.transcript || "");
+    const existingFingerprints = new Set(targetSegments.map(transcriptSegmentFingerprint));
+    const newSegments = selected.filter((segment) => {
+      const fingerprint = transcriptSegmentFingerprint(segment);
+      if (existingFingerprints.has(fingerprint)) return false;
+      existingFingerprints.add(fingerprint);
+      return true;
+    });
+    const merged = [...targetSegments, ...newSegments].sort(
+      (a, b) => (a.timestamp ?? Number.MAX_SAFE_INTEGER) - (b.timestamp ?? Number.MAX_SAFE_INTEGER)
+    );
+    await window.electronAPI.updateNote(target.id, { transcript: serializeTranscriptSegments(merged) });
+    if (removeFromSource) {
+      await persistDisplaySegments(displaySegments.filter((segment) => !selectedSegmentIds.has(segment.id)));
+    }
+    handleClearSelection();
+    setTransferOpen(false);
+    setMoveConfirmOpen(false);
+  }, [
+    displaySegments,
+    handleClearSelection,
+    note.folder_id,
+    note.id,
+    note.space_id,
+    selectedSegmentIds,
+    persistDisplaySegments,
+    transferCandidates,
+    transferTargetId,
+    transferTitle,
+  ]);
 
   const handleTitleInput = useCallback(() => {
     if (titleRef.current) {
@@ -806,6 +937,43 @@ export default function NoteEditor({
 
   const noteDate = formatNoteDate(note.created_at, locale);
   const shortDate = formatShortDate(note.created_at, locale);
+  const [isEditingDate, setIsEditingDate] = useState(false);
+
+  const noteDateInputValue = useMemo(() => {
+    const date = normalizeDbDate(note.created_at);
+    if (Number.isNaN(date.getTime())) return "";
+    return [
+      date.getFullYear(),
+      String(date.getMonth() + 1).padStart(2, "0"),
+      String(date.getDate()).padStart(2, "0"),
+    ].join("-");
+  }, [note.created_at]);
+
+  const handleDateChange = useCallback(
+    async (value: string) => {
+      if (!value) return;
+      const [year, month, day] = value.split("-").map(Number);
+      const current = normalizeDbDate(note.created_at);
+      const next = new Date(
+        year,
+        month - 1,
+        day,
+        current.getHours(),
+        current.getMinutes(),
+        current.getSeconds(),
+        current.getMilliseconds()
+      );
+      if (Number.isNaN(next.getTime())) return;
+      const timestamp = next.toISOString();
+      const result = await window.electronAPI.updateNote(note.id, {
+        created_at: timestamp,
+        updated_at: timestamp,
+      });
+      if (result.success && result.note) updateNoteInStore(result.note);
+      setIsEditingDate(false);
+    },
+    [note.created_at, note.id]
+  );
 
   const openShare = useCallback((intent: "open" | "copy-link") => {
     setShareIntent(intent);
@@ -852,6 +1020,29 @@ export default function NoteEditor({
               dateLabel={shortDate || undefined}
               dateTitle={noteDate}
             />
+            {shortDate &&
+              (isEditingDate && canEditNote ? (
+                <input
+                  type="date"
+                  autoFocus
+                  value={noteDateInputValue}
+                  onChange={(event) => void handleDateChange(event.target.value)}
+                  onBlur={() => setIsEditingDate(false)}
+                  aria-label={noteDate}
+                  className="h-6 rounded-md border border-border/60 bg-background px-1.5 text-[11px] text-foreground outline-none focus:ring-1 focus:ring-ring"
+                />
+              ) : canEditNote ? (
+                <button
+                  type="button"
+                  onClick={() => setIsEditingDate(true)}
+                  className="inline-flex items-center gap-1.5 rounded-md text-[11px] text-foreground/50 hover:text-foreground/80 dark:text-foreground/35 dark:hover:text-foreground/65"
+                  title={noteDate}
+                  aria-label={t("notes.editor.changeDate", { defaultValue: "Change note date" })}
+                >
+                  <Calendar size={11} className="shrink-0" />
+                  {shortDate}
+                </button>
+              ) : null)}
             {calendarEventName && (
               <span className={cn(NOTE_META_CHIP_CLASS, "cursor-default")}>
                 <LinkIcon size={14} className="shrink-0 text-foreground/60" />
@@ -1180,6 +1371,8 @@ export default function NoteEditor({
                   onAttachSpeakerEmail={handleAttachSpeakerEmail}
                   selectedSegmentIds={selectedSegmentIds}
                   onToggleSelect={handleToggleSelect}
+                  canEditText={canEditNote && !isDiarizing}
+                  onEditSegment={handleEditSegment}
                 />
               )
             ) : viewMode === "transcript" && hasMeetingTranscript ? (
@@ -1231,6 +1424,8 @@ export default function NoteEditor({
               <SelectionBar
                 count={selectedSegmentIds.size}
                 onClear={handleClearSelection}
+                onDelete={handleBulkDelete}
+                onTransfer={handleTransferSelection}
                 speakerProfiles={knownSpeakers}
                 participants={parsedParticipants}
                 onAssignName={handleBulkAssignName}
@@ -1238,6 +1433,71 @@ export default function NoteEditor({
               />
             </div>
           )}
+          <Dialog open={transferOpen} onOpenChange={setTransferOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>{t("notes.speaker.moveToNote", { defaultValue: "Copy/move to note" })}</DialogTitle>
+                <DialogDescription>
+                  {t("notes.speaker.chooseTarget", {
+                    defaultValue: "Choose any existing note or create a new one.",
+                  })}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3">
+                <select
+                  value={transferTargetId}
+                  onChange={(event) => setTransferTargetId(event.target.value)}
+                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                >
+                  <option value="">{t("notes.speaker.newTarget", { defaultValue: "Create a new note" })}</option>
+                  {transferCandidates.map((candidate) => (
+                    <option key={candidate.id} value={candidate.id}>
+                      {candidate.title || t("notes.list.untitledNote")} (#{candidate.id})
+                    </option>
+                  ))}
+                </select>
+                {!transferTargetId && (
+                  <input
+                    value={transferTitle}
+                    onChange={(event) => setTransferTitle(event.target.value)}
+                    placeholder={t("notes.speaker.newTargetTitle", { defaultValue: "New note title" })}
+                    className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                  />
+                )}
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setTransferOpen(false)}>
+                  {t("common.cancel", { defaultValue: "Cancel" })}
+                </Button>
+                <Button onClick={() => executeTransfer(false)}>
+                  {t("notes.speaker.copyToNote", { defaultValue: "Copy to note" })}
+                </Button>
+                <Button variant="destructive" onClick={() => setMoveConfirmOpen(true)}>
+                  {t("notes.speaker.moveToNote", { defaultValue: "Move to note" })}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+          <Dialog open={moveConfirmOpen} onOpenChange={setMoveConfirmOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>{t("notes.speaker.confirmMove", { defaultValue: "Move selected rows?" })}</DialogTitle>
+                <DialogDescription>
+                  {t("notes.speaker.confirmMoveDescription", {
+                    defaultValue: "This will remove the selected rows from the source note after copying them to the target.",
+                  })}
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setMoveConfirmOpen(false)}>
+                  {t("common.cancel", { defaultValue: "Cancel" })}
+                </Button>
+                <Button variant="destructive" onClick={() => executeTransfer(true)}>
+                  {t("notes.speaker.moveToNote", { defaultValue: "Move to note" })}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
           <NoteBottomBar
             isRecording={isRecording}
             onAskSubmit={handleAskSubmit}

@@ -496,6 +496,39 @@ test("does not require a BYOK provider for local transcription", async () => {
   );
 });
 
+test("allows local transcription when workspace policy is unavailable", async () => {
+  const { isTranscriptionSelectionAllowed } = await load();
+  const snapshot = { status: "error", policy: null, appVersion: null };
+
+  assert.equal(
+    isTranscriptionSelectionAllowed(snapshot, { mode: "local", provider: "" }),
+    true
+  );
+});
+
+test("allows local AI processing when workspace policy is unavailable", async () => {
+  const { isLlmSelectionAllowed } = await load();
+  const snapshot = { status: "error", policy: null, appVersion: null };
+
+  assert.equal(isLlmSelectionAllowed(snapshot, { mode: "local", provider: "" }), true);
+});
+
+test("allows transcript chat with a local model when the agent policy is unavailable", async () => {
+  const { isChatSelectionAllowed } = await load();
+  const snapshot = {
+    status: "managed",
+    policy: {
+      ...policy,
+      llm: { ...policy.llm, allowedModes: [...policy.llm.allowedModes, "local"] },
+      features: { ...policy.features, agentEnabled: false },
+    },
+    appVersion: "1.9.2",
+  };
+
+  assert.equal(isChatSelectionAllowed(snapshot, { mode: "local", provider: "" }), true);
+  assert.equal(isChatSelectionAllowed(snapshot, { mode: "openwhispr", provider: "openwhispr" }), false);
+});
+
 test("domain-only sharing permits only private recovery and domain visibility", async () => {
   const { isShareActionAllowed, isShareVisibilityAllowed } = await load();
   const snapshot = {

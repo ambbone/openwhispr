@@ -3129,6 +3129,8 @@ class DatabaseManager {
         "updated_by_user_id",
         "left_team",
         "account_id",
+        "created_at",
+        "updated_at",
       ];
       const fields = [];
       const values = [];

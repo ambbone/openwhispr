@@ -1607,6 +1607,7 @@
     "editor": {
       "untitled": "بدون عنوان",
       "noteTitle": "عنوان الملاحظة",
+      "changeDate": "Change note date",
       "stop": "إيقاف",
       "transcribe": "تفريغ",
       "processing": "جاري المعالجة...",
@@ -1880,6 +1881,14 @@
       "isThisPerson": "هل هذا {{name}}؟",
       "selected": "تم تحديد {{n}}",
       "assignTo": "تعيين إلى…",
+      "deleteSelected": "Delete selected",
+      "moveToNote": "Copy/move to note",
+      "chooseTarget": "Choose any existing note or create a new one.",
+      "newTarget": "Create a new note",
+      "newTargetTitle": "New note title",
+      "copyToNote": "Copy to note",
+      "confirmMove": "Move selected rows?",
+      "confirmMoveDescription": "This will remove the selected rows from the source note after copying them to the target.",
       "deselectAll": "إلغاء تحديد الكل",
       "confirmed": "مؤكد",
       "nameAssigned": "تم تعيين الاسم",
@@ -1942,8 +1951,18 @@
         }
       },
       "invite": "دعوة",
+      "importTranscriptAsNote": "Import transcript as note",
+      "importDuplicate": "Note already exists",
+      "importDuplicateDescription": "\"{{title}}\" already exists. A separate copy will be imported.",
       "list": {
         "empty": "لا توجد ملاحظات هنا بعد"
+      },
+      "transcript": {
+        "silenceGap": "{{minutes}} min later",
+        "editText": "Edit transcript text",
+        "saveEdit": "Save transcript edit",
+        "cancelEdit": "Cancel transcript edit",
+        "editError": "Could not save this transcript edit"
       },
       "author": {
         "you": "أنت"

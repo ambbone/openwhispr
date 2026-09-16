@@ -3270,6 +3270,7 @@
     "editor": {
       "untitled": "Unbenannt",
       "noteTitle": "Notiztitel",
+      "changeDate": "Change note date",
       "stop": "Stopp",
       "transcribe": "Transkribieren",
       "processing": "Verarbeitung...",
@@ -3537,6 +3538,14 @@
       "isThisPerson": "Ist das {{name}}?",
       "selected": "{{n}} ausgewählt",
       "assignTo": "Zuweisen zu…",
+      "deleteSelected": "Auswahl löschen",
+      "moveToNote": "Copy/move to note",
+      "chooseTarget": "Choose any existing note or create a new one.",
+      "newTarget": "Create a new note",
+      "newTargetTitle": "New note title",
+      "copyToNote": "Copy to note",
+      "confirmMove": "Move selected rows?",
+      "confirmMoveDescription": "This will remove the selected rows from the source note after copying them to the target.",
       "deselectAll": "Alle abwählen",
       "confirmed": "Bestätigt",
       "nameAssigned": "Name zugewiesen",
@@ -3591,8 +3600,18 @@
         }
       },
       "invite": "Einladen",
+      "importTranscriptAsNote": "Transkript als Notiz importieren",
+      "importDuplicate": "Note already exists",
+      "importDuplicateDescription": "\"{{title}}\" already exists. A separate copy will be imported.",
       "list": {
         "empty": "Hier gibt es noch keine Notizen"
+      },
+      "transcript": {
+        "silenceGap": "{{minutes}} Min. später",
+        "editText": "Transkriptionstext bearbeiten",
+        "saveEdit": "Änderung speichern",
+        "cancelEdit": "Änderung abbrechen",
+        "editError": "Diese Transkriptionsänderung konnte nicht gespeichert werden"
       },
       "author": {
         "you": "Du"

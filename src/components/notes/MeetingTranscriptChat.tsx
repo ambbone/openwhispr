@@ -1,7 +1,7 @@
 import { memo, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Check, Loader2, ShieldCheck, Sparkles, Users, X } from "../icons";
+import { Check, Loader2, Pencil, ShieldCheck, Sparkles, Trash2, Users, X } from "../icons";
 import { useStickToBottom } from "../../hooks/useStickToBottom";
 import { Popover, PopoverTrigger, PopoverContent } from "../ui/popover";
 import { Toggle } from "../ui/toggle";
@@ -68,9 +68,51 @@ const getEffectiveSpeakerKey = (
 };
 
 const getSpeakerNumber = (speakerId: string) => {
-  const match = speakerId.match(/speaker_(\d+)/);
-  return match ? Number(match[1]) + 1 : 1;
+  const indexedMatch = speakerId.match(/^speaker_(\d+)$/i);
+  if (indexedMatch) return Number(indexedMatch[1]) + 1;
+  const namedMatch = speakerId.match(/^speaker[ _](\d+)$/i);
+  return namedMatch ? Number(namedMatch[1]) : 1;
 };
+
+const formatElapsedTime = (seconds?: number): string => {
+  if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds < 0) return "--:--";
+  const totalSeconds = Math.floor(seconds);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const remainder = totalSeconds % 60;
+  return hours > 0
+    ? `${hours}:${String(minutes).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`
+    : `${String(minutes).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`;
+};
+
+const EPOCH_MILLISECONDS_THRESHOLD = 100_000_000_000;
+
+const getDisplayTimestamps = (segments: TranscriptSegment[]): Array<number | undefined> => {
+  const epochMilliseconds = segments
+    .map((segment) => segment.timestamp)
+    .filter(
+      (timestamp): timestamp is number =>
+        typeof timestamp === "number" &&
+        Number.isFinite(timestamp) &&
+        timestamp >= EPOCH_MILLISECONDS_THRESHOLD
+    );
+  const epochBaseline =
+    epochMilliseconds.length > 0 ? Math.min(...epochMilliseconds) / 1000 : undefined;
+
+  return segments.map((segment) => {
+    const timestamp = segment.timestamp;
+    if (typeof timestamp !== "number" || !Number.isFinite(timestamp) || timestamp < 0) {
+      return undefined;
+    }
+    if (timestamp >= EPOCH_MILLISECONDS_THRESHOLD && epochBaseline !== undefined) {
+      return timestamp / 1000 - epochBaseline;
+    }
+    return timestamp;
+  });
+};
+
+const formatGap = (seconds: number, t: (key: string, opts?: Record<string, unknown>) => string) =>
+  t("notes.overview.transcript.silenceGap", { minutes: Math.max(1, Math.round(seconds / 60)) });
 
 const getSpeakerStateLabel = (state: TranscriptSpeakerStatus, t: (key: string) => string) => {
   switch (state) {
@@ -503,21 +545,21 @@ function SelectCheckbox({
   className,
 }: {
   isSelected: boolean;
-  onToggle: () => void;
+  onToggle: (event: React.MouseEvent<HTMLButtonElement>) => void;
   className?: string;
 }) {
   return (
     <button
       onClick={(e) => {
         e.stopPropagation();
-        onToggle();
+        onToggle(e);
       }}
       aria-pressed={isSelected}
       className={cn(
         "w-4 h-4 rounded-full border flex items-center justify-center transition-all cursor-pointer",
         isSelected
           ? "border-primary bg-primary text-primary-foreground opacity-100"
-          : "border-border/70 bg-background/80 opacity-0 group-hover:opacity-100 hover:border-foreground/50",
+          : "border-border/70 bg-background/80 opacity-60 hover:opacity-100 hover:border-foreground/50",
         className
       )}
     >
@@ -529,16 +571,20 @@ function SelectCheckbox({
 export function SelectionBar({
   count,
   onClear,
+  onDelete,
   speakerProfiles,
   participants,
   onAssignName,
+  onTransfer,
   t,
 }: {
   count: number;
   onClear: () => void;
+  onDelete: () => void;
   speakerProfiles?: SpeakerProfileLite[];
   participants?: Array<{ email: string; displayName: string | null }>;
   onAssignName: (name: string, email?: string | null, profileId?: number) => void;
+  onTransfer: () => void;
   t: (key: string, opts?: Record<string, unknown>) => string;
 }) {
   const [open, setOpen] = useState(false);
@@ -570,6 +616,19 @@ export function SelectionBar({
         </PopoverContent>
       </Popover>
       <button
+        onClick={onTransfer}
+        className="inline-flex items-center gap-1 px-2 py-1 rounded text-foreground hover:bg-foreground/10 transition-colors cursor-pointer"
+      >
+        {t("notes.speaker.moveToNote", { defaultValue: "Copy/move to note" })}
+      </button>
+      <button
+        onClick={onDelete}
+        className="inline-flex items-center gap-1 px-2 py-1 rounded text-rose-500/90 hover:bg-rose-500/10 hover:text-rose-500 transition-colors cursor-pointer"
+      >
+        <Trash2 size={12} />
+        {t("notes.speaker.deleteSelected")}
+      </button>
+      <button
         onClick={onClear}
         className="px-2 py-1 rounded text-muted-foreground hover:bg-foreground/5 hover:text-foreground transition-colors cursor-pointer"
       >
@@ -581,6 +640,8 @@ export function SelectionBar({
 
 interface SegmentRowProps {
   segment: TranscriptSegment;
+  elapsedTime: string;
+  gapLabel?: string;
   selfSide: boolean;
   sameSpeaker: boolean;
   isFirst: boolean;
@@ -600,7 +661,9 @@ interface SegmentRowProps {
   onConfirmSuggestion?: (speakerId: string, suggestedName: string, profileId: number) => void;
   onDismissSuggestion?: (speakerId: string) => void;
   onAttachSpeakerEmail?: (profileId: number, email: string | null) => void;
-  onToggleSelect?: (segmentId: string) => void;
+  onToggleSelect?: (segmentId: string, options?: { shiftKey?: boolean }) => void;
+  canEditText?: boolean;
+  onEditSegment?: (segmentId: string, text: string) => void | Promise<void>;
   t: (key: string, opts?: Record<string, unknown>) => string;
 }
 
@@ -611,6 +674,8 @@ interface SegmentRowProps {
 // into view, so older rows would replay their entrance.
 const SegmentRow = memo(function SegmentRow({
   segment,
+  elapsedTime,
+  gapLabel,
   selfSide,
   sameSpeaker,
   isFirst,
@@ -626,8 +691,14 @@ const SegmentRow = memo(function SegmentRow({
   onDismissSuggestion,
   onAttachSpeakerEmail,
   onToggleSelect,
+  canEditText,
+  onEditSegment,
   t,
 }: SegmentRowProps) {
+  const [isEditingText, setIsEditingText] = useState(false);
+  const [draftText, setDraftText] = useState(segment.text);
+  const [isSavingText, setIsSavingText] = useState(false);
+  const [editError, setEditError] = useState(false);
   const hasSpeaker = !!segment.speaker;
   const isOriginallyYou = segment.speaker === "you";
   const isSystemSpeaker = hasSpeaker && !selfSide;
@@ -664,54 +735,168 @@ const SegmentRow = memo(function SegmentRow({
     </div>
   );
 
+  const beginTextEdit = () => {
+    setDraftText(segment.text);
+    setEditError(false);
+    setIsEditingText(true);
+  };
+
+  const cancelTextEdit = () => {
+    setDraftText(segment.text);
+    setEditError(false);
+    setIsEditingText(false);
+  };
+
+  const saveTextEdit = async () => {
+    const nextText = draftText.trim();
+    if (!nextText || nextText === segment.text.trim() || !onEditSegment) {
+      cancelTextEdit();
+      return;
+    }
+    setIsSavingText(true);
+    setEditError(false);
+    try {
+      await onEditSegment(segment.id, nextText);
+      setIsEditingText(false);
+    } catch {
+      setEditError(true);
+    } finally {
+      setIsSavingText(false);
+    }
+  };
+
   return (
     <div
       className={cn(
         "group flex flex-col",
         selfSide ? "items-start" : "items-end",
         !sameSpeaker && !isFirst && "mt-2",
-        selectable && (selfSide ? "ps-6" : "pe-6")
+        selectable && !selfSide && "pe-6"
       )}
       style={isNewest ? { animation: "agent-message-in 200ms ease-out both" } : undefined}
     >
-      {labelElement && !sameSpeaker && labelElement}
-      {labelElement && sameSpeaker && (
-        <div
-          className={cn(
-            "grid grid-rows-[0fr] opacity-0 pointer-events-none transition-[grid-template-rows,opacity] duration-150 ease-out",
-            "group-hover:grid-rows-[1fr] group-hover:opacity-100 group-hover:pointer-events-auto"
-          )}
-        >
-          <div className="overflow-hidden">{labelElement}</div>
+      {gapLabel && (
+        <div className="flex items-center gap-2 self-stretch mb-2 px-1 text-[10px] text-muted-foreground/45">
+          <div className="h-px flex-1 bg-border/40" />
+          <span>{gapLabel}</span>
+          <div className="h-px flex-1 bg-border/40" />
         </div>
       )}
-      <div className="relative max-w-[80%]">
-        <div
+      <div className="flex items-start gap-3 self-stretch">
+        <span
           className={cn(
-            "px-3 py-1.5 cursor-default transition-colors",
-            "text-[13px] leading-relaxed",
-            selfSide
-              ? cn(
-                  "bg-primary/90 text-primary-foreground",
-                  sameSpeaker ? "rounded-lg rounded-ss-sm" : "rounded-lg rounded-es-sm"
-                )
-              : cn(
-                  "bg-surface-2 border border-border/70 text-foreground",
-                  sameSpeaker ? "rounded-lg rounded-se-sm" : "rounded-lg rounded-ee-sm",
-                  isSystemSpeaker && cn("border-s-2", SPEAKER_BORDER_COLORS[colorIdx])
-                ),
-            isSelected && "ring-2 ring-primary/60"
+            "w-14 shrink-0 pt-2 text-start text-[10px] tabular-nums text-muted-foreground/40",
+            labelElement && !sameSpeaker && "mt-5"
           )}
         >
-          <span dir="auto">{segment.text}</span>
+          {elapsedTime}
+        </span>
+        <div className={cn("flex-1 min-w-0 flex flex-col", selfSide ? "items-start" : "items-end")}>
+          {labelElement && !sameSpeaker && labelElement}
+          {labelElement && sameSpeaker && (
+            <div
+              className={cn(
+                "grid grid-rows-[0fr] opacity-0 pointer-events-none transition-[grid-template-rows,opacity] duration-150 ease-out",
+                "group-hover:grid-rows-[1fr] group-hover:opacity-100 group-hover:pointer-events-auto"
+              )}
+            >
+              <div className="overflow-hidden">{labelElement}</div>
+            </div>
+          )}
+          <div className={cn("relative max-w-[80%]", selfSide && selectable && "ps-5")}>
+            <div
+              className={cn(
+                "px-3 py-1.5 cursor-default transition-colors",
+                "text-[13px] leading-relaxed",
+                canEditText && "pe-8",
+                selfSide
+                  ? cn(
+                      "bg-primary/90 text-primary-foreground",
+                      sameSpeaker ? "rounded-lg rounded-ss-sm" : "rounded-lg rounded-es-sm"
+                    )
+                  : cn(
+                      "bg-surface-2 border border-border/70 text-foreground",
+                      sameSpeaker ? "rounded-lg rounded-se-sm" : "rounded-lg rounded-ee-sm",
+                      isSystemSpeaker && cn("border-s-2", SPEAKER_BORDER_COLORS[colorIdx])
+                    ),
+                isSelected && "ring-2 ring-primary/60"
+              )}
+            >
+              {isEditingText ? (
+                <textarea
+                  value={draftText}
+                  onChange={(event) => setDraftText(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") cancelTextEdit();
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
+                      void saveTextEdit();
+                    }
+                  }}
+                  disabled={isSavingText}
+                  autoFocus
+                  rows={Math.min(5, Math.max(2, draftText.split("\n").length))}
+                  aria-label={t("notes.overview.transcript.editText")}
+                  className="w-full min-w-[12rem] resize-y rounded border border-primary/50 bg-background/20 px-1 py-0.5 text-inherit outline-none"
+                />
+              ) : (
+                <span
+                  onDoubleClick={canEditText ? beginTextEdit : undefined}
+                  className={canEditText ? "cursor-text" : undefined}
+                >
+                  <span dir="auto">{segment.text}</span>
+                </span>
+              )}
+              {canEditText && !isEditingText && (
+                <button
+                  type="button"
+                  onClick={beginTextEdit}
+                  aria-label={t("notes.overview.transcript.editText")}
+                  title={t("notes.overview.transcript.editText")}
+                  className="absolute end-1 top-1 rounded p-1 text-muted-foreground/50 opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group-hover:opacity-100"
+                >
+                  <Pencil size={12} />
+                </button>
+              )}
+              {isEditingText && (
+                <span className="absolute end-1 top-1 flex gap-0.5">
+                  <button
+                    type="button"
+                    onClick={() => void saveTextEdit()}
+                    disabled={isSavingText}
+                    aria-label={t("notes.overview.transcript.saveEdit")}
+                    title={t("notes.overview.transcript.saveEdit")}
+                    className="rounded p-1 text-primary hover:bg-accent disabled:opacity-40"
+                  >
+                    <Check size={12} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={cancelTextEdit}
+                    disabled={isSavingText}
+                    aria-label={t("notes.overview.transcript.cancelEdit")}
+                    title={t("notes.overview.transcript.cancelEdit")}
+                    className="rounded p-1 text-muted-foreground hover:bg-accent disabled:opacity-40"
+                  >
+                    <X size={12} />
+                  </button>
+                </span>
+              )}
+              {editError && (
+                <span className="mt-1 block text-[10px] text-destructive">
+                  {t("notes.overview.transcript.editError")}
+                </span>
+              )}
+            </div>
+            {selectable && (
+              <SelectCheckbox
+                isSelected={isSelected}
+                onToggle={(event) => onToggleSelect?.(segment.id, { shiftKey: event.shiftKey })}
+                className={cn("absolute top-1.5", selfSide ? "-start-2" : "-end-6")}
+              />
+            )}
+          </div>
         </div>
-        {selectable && (
-          <SelectCheckbox
-            isSelected={isSelected}
-            onToggle={() => onToggleSelect?.(segment.id)}
-            className={cn("absolute top-1.5", selfSide ? "-start-6" : "-end-6")}
-          />
-        )}
       </div>
     </div>
   );
@@ -743,7 +928,9 @@ interface MeetingTranscriptChatProps {
   onConfirmSuggestion?: (speakerId: string, suggestedName: string, profileId: number) => void;
   onDismissSuggestion?: (speakerId: string) => void;
   onAttachSpeakerEmail?: (profileId: number, email: string | null) => void;
-  onToggleSelect?: (segmentId: string) => void;
+  onToggleSelect?: (segmentId: string, options?: { shiftKey?: boolean }) => void;
+  canEditText?: boolean;
+  onEditSegment?: (segmentId: string, text: string) => void | Promise<void>;
 }
 
 export function MeetingTranscriptChat({
@@ -768,6 +955,8 @@ export function MeetingTranscriptChat({
   onDismissSuggestion,
   onAttachSpeakerEmail,
   onToggleSelect,
+  canEditText,
+  onEditSegment,
 }: MeetingTranscriptChatProps) {
   const { t } = useTranslation();
   const hasContent = segments.length > 0 || Boolean(micPartial) || Boolean(systemPartial);
@@ -818,6 +1007,7 @@ export function MeetingTranscriptChat({
       })),
     [segments, speakerMappings]
   );
+  const displayTimestamps = useMemo(() => getDisplayTimestamps(segments), [segments]);
 
   const colorByKey = useMemo(() => {
     const map = new Map<string, number>();
@@ -975,6 +1165,14 @@ export function MeetingTranscriptChat({
               const selfSide = isSelfSide(segment);
               const isSystemSpeaker = !!segment.speaker && !selfSide;
               const { key, activeName } = rowMeta[i];
+              const timestamp = displayTimestamps[i];
+              const previousTimestamp = i > 0 ? displayTimestamps[i - 1] : undefined;
+              const gapSeconds =
+                typeof timestamp === "number" &&
+                typeof previousTimestamp === "number" &&
+                timestamp - previousTimestamp >= 60
+                  ? timestamp - previousTimestamp
+                  : 0;
               return (
                 <div
                   key={segment.id}
@@ -991,6 +1189,8 @@ export function MeetingTranscriptChat({
                 >
                   <SegmentRow
                     segment={segment}
+                    elapsedTime={formatElapsedTime(timestamp)}
+                    gapLabel={gapSeconds ? formatGap(gapSeconds, t) : undefined}
                     selfSide={selfSide}
                     sameSpeaker={i > 0 && rowMeta[i - 1].key === key}
                     isFirst={i === 0}
@@ -1006,6 +1206,8 @@ export function MeetingTranscriptChat({
                     onDismissSuggestion={onDismissSuggestion}
                     onAttachSpeakerEmail={onAttachSpeakerEmail}
                     onToggleSelect={onToggleSelect}
+                    canEditText={canEditText}
+                    onEditSegment={onEditSegment}
                     t={t}
                   />
                 </div>

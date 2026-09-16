@@ -44,6 +44,7 @@ import { extractApiErrorMessage } from "./ai/apiErrorMessage";
 import { clearTinfoilClientCache } from "./ai/tinfoilClient";
 import { resolveChatRoute } from "../helpers/chatRouting";
 import { assertAgentAllowedByPolicy, assertReasoningAllowedByPolicy } from "./reasoningPolicy";
+import { usePolicyStore } from "../stores/policyStore";
 import type { InferenceMode } from "../types/electron";
 
 export type ToolMetadata = Record<string, unknown> | Array<Record<string, unknown>>;
@@ -98,7 +99,14 @@ function resolveLlmDispatchMode(
 }
 
 function assertAgentSessionAllowedByPolicy(provider: string, mode: InferenceMode): void {
-  assertAgentAllowedByPolicy();
+  // Local sessions never leave the device; the agent feature flag only gates
+  // them while no managed policy says otherwise.
+  if (mode !== "local") {
+    assertAgentAllowedByPolicy();
+  } else {
+    const state = usePolicyStore.getState();
+    if (state.status === "managed" && state.policy) assertAgentAllowedByPolicy();
+  }
   assertReasoningAllowedByPolicy(provider, mode);
 }
 

@@ -2927,6 +2927,7 @@
     "editor": {
       "untitled": "Sem título",
       "noteTitle": "Título da nota",
+      "changeDate": "Change note date",
       "stop": "Parar",
       "transcribe": "Transcrever",
       "processing": "Processando...",
@@ -3188,6 +3189,14 @@
       "isThisPerson": "É {{name}}?",
       "selected": "{{n}} selecionado(s)",
       "assignTo": "Atribuir a…",
+      "deleteSelected": "Excluir seleção",
+      "moveToNote": "Copy/move to note",
+      "chooseTarget": "Choose any existing note or create a new one.",
+      "newTarget": "Create a new note",
+      "newTargetTitle": "New note title",
+      "copyToNote": "Copy to note",
+      "confirmMove": "Move selected rows?",
+      "confirmMoveDescription": "This will remove the selected rows from the source note after copying them to the target.",
       "deselectAll": "Desmarcar tudo",
       "confirmed": "Confirmado",
       "nameAssigned": "Nome atribuído",
@@ -3248,8 +3257,18 @@
         }
       },
       "invite": "Convidar",
+      "importTranscriptAsNote": "Importar transcrição como nota",
+      "importDuplicate": "Note already exists",
+      "importDuplicateDescription": "\"{{title}}\" already exists. A separate copy will be imported.",
       "list": {
         "empty": "Ainda não há notas aqui"
+      },
+      "transcript": {
+        "silenceGap": "{{minutes}} min depois",
+        "editText": "Editar texto da transcrição",
+        "saveEdit": "Salvar edição",
+        "cancelEdit": "Cancelar edição",
+        "editError": "Não foi possível salvar esta edição"
       },
       "author": {
         "you": "Você"

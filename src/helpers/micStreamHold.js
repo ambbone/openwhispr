@@ -92,7 +92,9 @@ export class MicStreamHold {
   }
 
   _isLive(track) {
-    return !!track && track.readyState === "live" && !track.muted;
+    // Windows may report an idle held track as muted even though it can be
+    // cloned successfully when recording begins.
+    return !!track && track.readyState === "live";
   }
 
   _clearReleaseTimer() {

@@ -2830,6 +2830,7 @@
       "participants": "参加者",
       "untitled": "無題",
       "noteTitle": "ノートのタイトル",
+      "changeDate": "Change note date",
       "stop": "停止",
       "processing": "処理中...",
       "export": "エクスポート",
@@ -3116,6 +3117,14 @@
       "isThisPerson": "{{name}}さんですか？",
       "selected": "{{n}}件選択中",
       "assignTo": "割り当て…",
+      "deleteSelected": "選択を削除",
+      "moveToNote": "Copy/move to note",
+      "chooseTarget": "Choose any existing note or create a new one.",
+      "newTarget": "Create a new note",
+      "newTargetTitle": "New note title",
+      "copyToNote": "Copy to note",
+      "confirmMove": "Move selected rows?",
+      "confirmMoveDescription": "This will remove the selected rows from the source note after copying them to the target.",
       "deselectAll": "すべて選択解除",
       "confirmed": "確認済み",
       "nameAssigned": "名前を割り当てました",
@@ -3176,8 +3185,18 @@
         }
       },
       "invite": "招待",
+      "importTranscriptAsNote": "文字起こしをノートとしてインポート",
+      "importDuplicate": "Note already exists",
+      "importDuplicateDescription": "\"{{title}}\" already exists. A separate copy will be imported.",
       "list": {
         "empty": "まだノートがありません"
+      },
+      "transcript": {
+        "silenceGap": "{{minutes}}分後",
+        "editText": "文字起こしを編集",
+        "saveEdit": "編集を保存",
+        "cancelEdit": "編集をキャンセル",
+        "editError": "編集を保存できませんでした"
       },
       "author": {
         "you": "自分"

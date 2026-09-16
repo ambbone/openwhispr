@@ -3270,6 +3270,7 @@
     "editor": {
       "untitled": "Sans titre",
       "noteTitle": "Titre de la note",
+      "changeDate": "Change note date",
       "stop": "Arrêter",
       "transcribe": "Transcrire",
       "processing": "Traitement...",
@@ -3537,6 +3538,14 @@
       "isThisPerson": "Est-ce {{name}} ?",
       "selected": "{{n}} sélectionné(s)",
       "assignTo": "Assigner à…",
+      "deleteSelected": "Supprimer la sélection",
+      "moveToNote": "Copy/move to note",
+      "chooseTarget": "Choose any existing note or create a new one.",
+      "newTarget": "Create a new note",
+      "newTargetTitle": "New note title",
+      "copyToNote": "Copy to note",
+      "confirmMove": "Move selected rows?",
+      "confirmMoveDescription": "This will remove the selected rows from the source note after copying them to the target.",
       "deselectAll": "Tout désélectionner",
       "confirmed": "Confirmé",
       "nameAssigned": "Nom attribué",
@@ -3591,8 +3600,18 @@
         }
       },
       "invite": "Inviter",
+      "importTranscriptAsNote": "Importer la transcription comme note",
+      "importDuplicate": "Note already exists",
+      "importDuplicateDescription": "\"{{title}}\" already exists. A separate copy will be imported.",
       "list": {
         "empty": "Aucune note ici pour l'instant"
+      },
+      "transcript": {
+        "silenceGap": "{{minutes}} min plus tard",
+        "editText": "Modifier le texte de la transcription",
+        "saveEdit": "Enregistrer la modification",
+        "cancelEdit": "Annuler la modification",
+        "editError": "Impossible d'enregistrer cette modification"
       },
       "author": {
         "you": "Vous"

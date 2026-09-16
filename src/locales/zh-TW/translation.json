@@ -2927,6 +2927,7 @@
     "editor": {
       "untitled": "未命名",
       "noteTitle": "筆記標題",
+      "changeDate": "Change note date",
       "stop": "停止",
       "transcribe": "轉錄",
       "processing": "處理中...",
@@ -3188,6 +3189,14 @@
       "isThisPerson": "這是{{name}}嗎？",
       "selected": "已選 {{n}} 個",
       "assignTo": "指派給…",
+      "deleteSelected": "刪除所選",
+      "moveToNote": "Copy/move to note",
+      "chooseTarget": "Choose any existing note or create a new one.",
+      "newTarget": "Create a new note",
+      "newTargetTitle": "New note title",
+      "copyToNote": "Copy to note",
+      "confirmMove": "Move selected rows?",
+      "confirmMoveDescription": "This will remove the selected rows from the source note after copying them to the target.",
       "deselectAll": "取消全選",
       "confirmed": "已確認",
       "nameAssigned": "姓名已指派",
@@ -3248,8 +3257,18 @@
         }
       },
       "invite": "邀請",
+      "importTranscriptAsNote": "將轉錄匯入為筆記",
+      "importDuplicate": "Note already exists",
+      "importDuplicateDescription": "\"{{title}}\" already exists. A separate copy will be imported.",
       "list": {
         "empty": "這裡還沒有筆記"
+      },
+      "transcript": {
+        "silenceGap": "{{minutes}} 分鐘後",
+        "editText": "編輯轉錄文字",
+        "saveEdit": "儲存轉錄修改",
+        "cancelEdit": "取消轉錄修改",
+        "editError": "無法儲存此次轉錄修改"
       },
       "author": {
         "you": "你"

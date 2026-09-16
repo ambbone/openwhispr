@@ -1434,6 +1434,8 @@ declare global {
           owner_user_id?: string | null;
           updated_by_user_id?: string | null;
           left_team?: number;
+          created_at?: string;
+          updated_at?: string;
         }
       ) => Promise<{ success: boolean; note?: NoteItem }>;
       deleteNote: (id: number) => Promise<{ success: boolean }>;

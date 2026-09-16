@@ -509,6 +509,75 @@ export default function PersonalNotesView({
     loadFolders();
   }, [activeFolderId]);
 
+  const handleImportNotes = useCallback(
+    async (files: FileList) => {
+      if (!activeContext) return;
+      for (const file of Array.from(files)) {
+        const parsed = JSON.parse(await file.text()) as {
+          metadata?: { title?: string; date?: string };
+          segments?: Array<{ speaker?: string; timestamp?: number; text?: string }>;
+        };
+        if (!Array.isArray(parsed.segments) || parsed.segments.length === 0) continue;
+        const segments = parsed.segments
+          .filter((segment) => typeof segment.text === "string" && segment.text.trim())
+          .map((segment, index) => {
+            const isYou = segment.speaker?.trim().toLowerCase() === "you";
+            return {
+              id: `imported-${Date.now()}-${index}`,
+              text: segment.text!.trim(),
+              source: isYou ? ("mic" as const) : ("system" as const),
+              timestamp: typeof segment.timestamp === "number" ? segment.timestamp : undefined,
+              speaker: segment.speaker,
+            };
+          });
+        if (segments.length === 0) continue;
+        const title =
+          parsed.metadata?.title?.trim() ||
+          file.name.replace(/\.json$/i, "") ||
+          t("notes.list.untitledNote");
+        const duplicate = (await window.electronAPI.getNotes(null, 200)).find(
+          (existing) =>
+            existing.space_id === activeContext.spaceId &&
+            existing.title.trim().toLowerCase() === title.toLowerCase()
+        );
+        if (duplicate) {
+          toast({
+            title: t("notes.overview.importDuplicate", { defaultValue: "Note already exists" }),
+            description: t("notes.overview.importDuplicateDescription", {
+              title,
+              defaultValue: `"{{title}}" already exists. A separate copy will be imported.`,
+            }),
+          });
+        }
+        const result = await window.electronAPI.saveNote(
+          title,
+          "",
+          "meeting",
+          null,
+          null,
+          activeContext.folderId,
+          activeContext.spaceId
+        );
+        if (!result.success || !result.note) throw new Error(`Failed to import "${file.name}"`);
+        const parsedDate = parsed.metadata?.date ? new Date(parsed.metadata.date) : null;
+        await window.electronAPI.updateNote(result.note.id, {
+          transcript: JSON.stringify(segments),
+          ...(parsedDate && !Number.isNaN(parsedDate.getTime()) && {
+            created_at: parsedDate.toISOString(),
+            updated_at: parsedDate.toISOString(),
+          }),
+        });
+        if (activeContext.folderId == null) {
+          await initializeNotesTree();
+        } else {
+          await initializeNotes(null, 50, activeContext.folderId);
+        }
+        loadFolders();
+      }
+    },
+    [activeContext, t, toast]
+  );
+
   const handleDelete = useCallback(
     async (id: number) => {
       if (shouldCancelPendingSavesForDelete(draftRef.current?.noteId ?? null, id)) {
@@ -821,6 +890,7 @@ export default function PersonalNotesView({
             onOpenNote={setActiveNoteId}
             onNewNote={createNote}
             onAddExisting={activeFolderId != null ? () => setShowAddNotesDialog(true) : undefined}
+            onImportNotes={handleImportNotes}
           />
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center -mt-6">
