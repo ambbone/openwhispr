@@ -10,6 +10,16 @@ Custom releases are suffixed: `1.10.2-custom.1`, `1.10.2-custom.2`, …
 
 - Bump `package.json` AND the two `version` fields at the top of
   `package-lock.json` (root + `packages[""]`). Keep them in sync.
+- The `-custom.N` suffix is explicitly tolerated: `toCanonicalBaseAppVersion`
+  (`src/helpers/appVersion.js`) strips it so policy-gated cloud requests
+  advertise the canonical upstream base (`x-openwhispr-version: 1.10.2`),
+  and `compareAppVersions` (`src/utils/version.ts`) compares a fork build as
+  its base. `isCanonicalAppVersion` stays strict in both main and renderer
+  (pinned by `test/helpers/appVersion.test.js`). Without this, every
+  policy-gated request throws
+  `Policy requests require a canonical app version` and the setup wizard
+  dead-ends at "No setup option is available". Do NOT remove the suffix to
+  "fix" cloud errors — the suffix handling is the fix.
 - Always use Node 24 for `npm install` (matches CI; other majors rewrite the
   lockfile incompatibly).
 - Semver reads `1.10.2-custom.1` as OLDER than stock `1.10.2`, so the stock
