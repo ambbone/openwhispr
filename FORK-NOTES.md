@@ -28,6 +28,22 @@ Custom releases are suffixed: `1.10.2-custom.1`, `1.10.2-custom.2`, …
    `%AppData%/OpenWhispr-development/transcriptions-dev.db*` for dev-channel.
 5. `npm run pack -- --config.directories.output=dist/custom-<ver>`
    (e.g. `dist/custom-1.10.2`). Prepack downloads sidecars automatically.
+   **Build env (REQUIRED for any cloud/account feature):** official builds
+   inject `VITE_OPENWHISPR_API_URL`, `VITE_AUTH_URL`, and
+   `VITE_OPENWHISPR_OAUTH_CALLBACK_URL` at build time (see
+   `.github/workflows/release.yml`); they are baked into
+   `src/dist/runtime-env.json`. A local `npm run pack` without them produces
+   a build with no API URL: sign-in works (auth URL has a hardcoded
+   fallback) but every cloud call fails with
+   `OpenWhispr API URL not configured` — workspace policy fetch fails, the
+   onboarding setup step dead-ends at "No setup option is available", and
+   signed-in account notes never sync. Always build as:
+   `VITE_OPENWHISPR_API_URL=https://api.openwhispr.com VITE_AUTH_URL=https://auth.openwhispr.com npm run pack -- --config.directories.output=dist/custom-<ver>`
+   (PowerShell: `$env:VITE_OPENWHISPR_API_URL="https://api.openwhispr.com"; ...`).
+   Emergency workaround without rebuilding: add
+   `OPENWHISPR_API_URL=https://api.openwhispr.com` to
+   `%AppData%/open-whispr/.env` (loaded into `process.env` at startup,
+   checked first by `getApiUrl` in `ipcHandlers.js`).
 6. **Known packaging gap (as of 1.10.2):** `win-unpacked/resources/bin/` is
    missing `windows-key-listener.exe`, `windows-mic-listener.exe`,
    `windows-system-audio-helper.exe`, `windows-text-monitor.exe` even though
