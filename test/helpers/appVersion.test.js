@@ -22,6 +22,15 @@ test("an invalid installed version never satisfies a valid minimum", async () =>
   assert.equal(compareAppVersions("1.9.0", "1.8.1"), 1);
 });
 
+test("a -custom fork build compares as its canonical upstream base", async () => {
+  const { compareAppVersions } = await load();
+
+  assert.equal(compareAppVersions("1.10.2-custom.2", "1.10.2"), 0);
+  assert.equal(compareAppVersions("1.10.2-custom.2", "1.10.1"), 1);
+  assert.equal(compareAppVersions("1.10.2-custom.2", "1.10.3"), -1);
+  assert.equal(compareAppVersions("1.10.2-custom", "1.10.2"), -1);
+});
+
 test("keeps renderer and main-process validation behavior aligned", async () => {
   const { isCanonicalAppVersion } = await load();
   const mainVersion = require("../../src/helpers/appVersion.js");

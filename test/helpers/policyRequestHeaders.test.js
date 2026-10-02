@@ -35,3 +35,13 @@ test("rejects a non-canonical app version instead of advertising a malformed cli
   assert.throws(() => withPolicyRequestHeaders({}, "1.8"), /canonical app version/i);
   assert.throws(() => withPolicyRequestHeaders({}, "1.8.1-beta.1"), /canonical app version/i);
 });
+
+test("advertises the canonical base for fork builds carrying a -custom suffix", () => {
+  assert.deepEqual(withPolicyRequestHeaders({ Authorization: "Bearer token" }, "1.10.2-custom.2"), {
+    Authorization: "Bearer token",
+    "x-openwhispr-policy-version": "1",
+    "x-openwhispr-version": "1.10.2",
+  });
+  assert.throws(() => withPolicyRequestHeaders({}, "1.10.2-custom"), /canonical app version/i);
+  assert.throws(() => withPolicyRequestHeaders({}, "1.10.2-custom.beta"), /canonical app version/i);
+});
